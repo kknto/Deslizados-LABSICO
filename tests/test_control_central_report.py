@@ -317,10 +317,15 @@ class ControlCentralReportTests(unittest.TestCase):
         )
 
         self.assertIn("Temperatura Por Zona", html)
-        self.assertIn("<th>Zona</th><th>Olla</th><th>Fecha</th>", html)
+        self.assertIn(
+            "<th>Zona</th><th>Olla</th><th>Fecha</th><th>Salida planta</th><th>Concreto C</th><th>Ambiente C</th><th>HR %</th>",
+            html,
+        )
         self.assertIn("2026-07-24T10:10", html)
         self.assertIn("35.4", html)
-        self.assertIn("manual", html)
+        temperature_section = html.split("<h2>Temperatura Por Zona</h2>", 1)[1]
+        self.assertNotIn("<th>Min zona</th>", temperature_section)
+        self.assertNotIn("<th>Origen</th>", temperature_section)
         self.assertNotIn("<h2>Lecturas</h2>", html)
         self.assertNotIn(">99<", html)
 

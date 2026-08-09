@@ -545,11 +545,9 @@ def render_colado_report(
             r.get("numero_olla"),
             r.get("fecha_hora"),
             r.get("hora_salida_planta"),
-            r.get("minuto_desde_zona"),
             r.get("temperatura_concreto_c"),
             r.get("temperatura_ambiente_c"),
             r.get("humedad_relativa_pct"),
-            r.get("origen"),
         ],
     )
     zone_rows = _rows(
@@ -630,7 +628,7 @@ def render_colado_report(
   <h2>Eventos De Deslizamiento</h2>
   <table><thead><tr><th>Fecha</th><th>Decision</th><th>Resultado</th><th>Velocidad</th><th>Supervisor</th><th>Observacion</th></tr></thead><tbody>{event_rows}</tbody></table>
   <h2>Temperatura Por Zona</h2>
-  <table><thead><tr><th>Zona</th><th>Olla</th><th>Fecha</th><th>Salida planta</th><th>Min zona</th><th>Concreto C</th><th>Ambiente C</th><th>HR %</th><th>Origen</th></tr></thead><tbody>{zone_temperature_rows}</tbody></table>
+  <table><thead><tr><th>Zona</th><th>Olla</th><th>Fecha</th><th>Salida planta</th><th>Concreto C</th><th>Ambiente C</th><th>HR %</th></tr></thead><tbody>{zone_temperature_rows}</tbody></table>
 </body>
 </html>"""
 
