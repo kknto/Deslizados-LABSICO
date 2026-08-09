@@ -56,7 +56,7 @@ class CloudDeployTests(unittest.TestCase):
         text = (ROOT / "render.yaml").read_text(encoding="utf-8")
 
         self.assertIn("runtime: python", text)
-        self.assertIn("preDeployCommand: python -m slipform.cloud_init", text)
+        self.assertNotIn("preDeployCommand", text)
         self.assertIn("startCommand: python -m slipform.server", text)
         self.assertIn("healthCheckPath: /api/health", text)
         self.assertIn("SLIPFORM_DB_PATH", text)

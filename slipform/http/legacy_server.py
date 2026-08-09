@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from slipform.core import calculate_state
+from slipform.cloud_init import initialize_database
 from slipform.domain.data_quality import DataQualityWarningError
 from slipform.db import (
     connect,
@@ -223,8 +224,7 @@ def _path_id(path: str, prefix: str) -> int:
 
 def run(host: str | None = None, port: int | None = None) -> None:
     host, port = resolve_runtime_config(host, port)
-    with connect(DB_PATH) as conn:
-        init_db(conn)
+    initialize_database(DB_PATH)
     server = ThreadingHTTPServer((host, port), SlipformHandler)
     print(f"Servidor iniciado en http://{host}:{port}")
     print(f"SQLite activo: {DB_PATH}")

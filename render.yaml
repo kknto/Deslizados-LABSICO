@@ -5,7 +5,6 @@ services:
     plan: starter
     region: oregon
     buildCommand: python -m pip install --upgrade pip
-    preDeployCommand: python -m slipform.cloud_init
     startCommand: python -m slipform.server
     healthCheckPath: /api/health
     autoDeployTrigger: commit

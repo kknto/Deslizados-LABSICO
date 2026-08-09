@@ -77,7 +77,7 @@ services/written_log_ocr.py       OCR experimental; genera candidatos, nunca esc
 
 - SQLite es la fuente local de verdad.
 - En nube, `SLIPFORM_DB_PATH` define la ruta de SQLite. Render usa `/var/data/slipform.sqlite` sobre disco persistente.
-- La base SQLite no se versiona en GitHub; `slipform.cloud_init` crea schema y curvas al desplegar.
+- La base SQLite no se versiona en GitHub; `slipform.cloud_init` crea schema y curvas al arrancar si la base esta vacia.
 - Toda conexion debe habilitar `PRAGMA foreign_keys=ON` y cerrarse correctamente.
 - Las URLs publicas usadas por las vistas Lite no deben cambiar sin prueba de contrato.
 - `legacy-app.js` se mantiene como orquestador temporal; nuevas responsabilidades visibles deben moverse gradualmente a `view-operator`, `view-capture`, `view-program` y `view-report`.
@@ -91,7 +91,6 @@ services/written_log_ocr.py       OCR experimental; genera candidatos, nunca esc
 ## Despliegue Web
 
 - `render.yaml` define el servicio Python, disco persistente, health check y comandos de arranque.
-- `preDeployCommand` ejecuta `python -m slipform.cloud_init`.
 - `startCommand` ejecuta `python -m slipform.server`.
 - El servidor toma `PORT` y `SLIPFORM_HOST` del entorno cuando existen, preservando `127.0.0.1:8010` para uso local.
 - SQLite en Render es adecuada para una sola instancia. Para multiples instancias o alta concurrencia, la ruta futura es PostgreSQL.

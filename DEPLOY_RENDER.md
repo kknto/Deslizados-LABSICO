@@ -7,11 +7,11 @@ Este proyecto incluye `render.yaml` para crear el servicio web desde un Blueprin
 - Servicio web Python `deslizados-labsico`.
 - Disco persistente de 1 GB montado en `/var/data`.
 - SQLite activa en `/var/data/slipform.sqlite`.
-- Inicializacion previa al despliegue con `python -m slipform.cloud_init`.
+- Inicializacion idempotente al arrancar con `python -m slipform.cloud_init`.
 
 ## Base De Datos
 
-No se sube `data/slipform.sqlite` al repositorio para evitar publicar datos reales. En Render, la primera ejecucion crea una SQLite nueva con schema, proyecto base, configuracion de molde y curvas HRP importadas desde `Curvas HRP.xlsx`.
+No se sube `data/slipform.sqlite` al repositorio para evitar publicar datos reales. En Render, la primera ejecucion del servidor crea una SQLite nueva con schema, proyecto base, configuracion de molde y curvas HRP importadas desde `Curvas HRP.xlsx`.
 
 Si despues necesitas llevar datos historicos a internet, usa la exportacion/importacion de respaldo desde la app, no reemplaces archivos dentro del repositorio.
 
