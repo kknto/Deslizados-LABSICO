@@ -224,6 +224,13 @@ class ControlCentralReportTests(unittest.TestCase):
 
         for token in (
             "Resumen Operativo De Deslizado",
+            "Estado operativo:",
+            "Fuente:",
+            "Soporte:",
+            "Zona / condicion",
+            "Madurez zona",
+            "Temperatura zona",
+            "Ultima lectura zona",
             "Altura visible",
             "Ritmo programado",
             "Estado molde",
@@ -231,6 +238,10 @@ class ControlCentralReportTests(unittest.TestCase):
             "Avance Por Turno",
         ):
             self.assertIn(token, html)
+        header = html.split("Resumen Operativo De Deslizado", 1)[0]
+        self.assertNotIn("Estado: SIN_DATOS", header)
+        self.assertNotIn("<b>Madurez</b>", header)
+        self.assertNotIn("<b>Temp. actual</b>", header)
         self.assertNotIn("orange", html.lower())
 
     def test_printable_colado_report_uses_historical_control_turns_and_chart(self) -> None:

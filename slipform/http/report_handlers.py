@@ -523,6 +523,176 @@ def _printable_control_summary(context: dict[str, Any] | None) -> str:
   </section>"""
 
 
+def _printable_status_line(
+    colado: dict[str, Any],
+    mold_state: dict[str, Any] | None,
+    control_context: dict[str, Any] | None,
+    zone_temperature_readings: list[dict[str, Any]] | None,
+    prediction: dict[str, Any],
+) -> str:
+    colado_state = _friendly_colado_state(colado)
+    operative_state = _friendly_mold_state(colado, mold_state)
+    has_operational_context = bool(
+        mold_state
+        or zone_temperature_readings
+        or (control_context or {}).get("zones")
+        or (control_context or {}).get("advances")
+        or (control_context or {}).get("events")
+    )
+    source = "control operativo" if has_operational_context else "lectura general"
+    if source == "lectura general" and prediction.get("estado"):
+        operative_state = "Sin lectura general" if prediction.get("estado") == "SIN_DATOS" else str(prediction.get("estado"))
+    elif not mold_state and has_operational_context:
+        operative_state = "Sin zona activa"
+    zones_count = len((control_context or {}).get("zones") or [])
+    advances_count = len((control_context or {}).get("advances") or [])
+    zone_readings_count = len(zone_temperature_readings or [])
+    support = f"{zones_count} zonas, {advances_count} avances, {zone_readings_count} lecturas por zona"
+    return (
+        f"Silo: {colado.get('silo_id') or '--'} | Estado colado: {colado_state} | "
+        f"Estado operativo: {operative_state} | Fuente: {source} | Soporte: {support}"
+    )
+
+
+def _printable_operational_summary(
+    colado: dict[str, Any],
+    prediction: dict[str, Any],
+    mold_state: dict[str, Any] | None,
+    control_context: dict[str, Any] | None,
+    zone_temperature_readings: list[dict[str, Any]] | None,
+) -> str:
+    esc = escape_html
+    zone = (mold_state or {}).get("zona_en_liberacion") or {}
+    progress = (mold_state or {}).get("progreso_operativo") or {}
+    summary = (control_context or {}).get("resumen") or {}
+    latest_zone_reading = _latest_zone_temperature(zone_temperature_readings or [])
+
+    if _is_colado_closed(colado):
+        zone_label = "Colado cerrado"
+        maturity_label = _format_zone_maturity(zone, fallback="Cierre registrado")
+        remaining_label = "No aplica"
+    elif zone:
+        zone_label = f"Zona {zone.get('zona_numero') or '--'}"
+        maturity_label = _format_zone_maturity(zone)
+        remaining_label = _format_remaining_minutes(zone)
+    else:
+        zone_label = "Sin zona activa"
+        maturity_label = _format_general_maturity(prediction)
+        remaining_label = "Sin estimacion"
+
+    temp_label = _format_zone_temperature(zone, latest_zone_reading)
+    visible_advance = summary.get("altura_visible_m") or summary.get("altura_total_deslizada_m")
+    if visible_advance not in (None, ""):
+        advance_label = f"{visible_advance} m"
+    elif progress.get("avance_total_cm") is not None:
+        advance_label = f"{progress.get('avance_total_cm')} cm"
+    else:
+        advance_label = "Sin avance registrado"
+
+    latest_label = _format_latest_zone_reading(latest_zone_reading)
+    source_label = "Lecturas por zona"
+    if not zone_temperature_readings and prediction.get("temperatura_actual_concreto_c") is not None:
+        source_label = "Lectura general"
+    elif not zone_temperature_readings:
+        source_label = "Sin lecturas de temperatura"
+
+    return f"""
+  <div class="operational-summary">
+    <div class="box"><b>Zona / condicion</b><br>{esc(zone_label)}</div>
+    <div class="box"><b>Madurez zona</b><br>{esc(maturity_label)}</div>
+    <div class="box"><b>Temperatura zona</b><br>{esc(temp_label)}</div>
+    <div class="box"><b>Avance visible</b><br>{esc(advance_label)}</div>
+    <div class="box"><b>Ultima lectura zona</b><br>{esc(latest_label)}</div>
+    <div class="box"><b>Min. restantes</b><br>{esc(remaining_label)}<br><small>{esc(source_label)}</small></div>
+  </div>"""
+
+
+def _friendly_colado_state(colado: dict[str, Any]) -> str:
+    state = str(colado.get("estado") or "ACTIVO").strip().upper()
+    if state == "CERRADO":
+        close_date = colado.get("fecha_cierre")
+        return f"Cerrado {close_date}" if close_date else "Cerrado"
+    if state == "ACTIVO":
+        return "Activo"
+    return state.replace("_", " ").title()
+
+
+def _friendly_mold_state(colado: dict[str, Any], mold_state: dict[str, Any] | None) -> str:
+    if _is_colado_closed(colado):
+        return "Colado cerrado"
+    state = str((mold_state or {}).get("estado_operativo") or "").strip()
+    if not state:
+        return "Sin estado operativo"
+    labels = {
+        "FALTA_ZONA_SUPERIOR": "Falta zona superior",
+        "SIN_ZONA_A_LIBERAR": "Sin zona a liberar",
+        "SIN_ZONAS": "Sin zonas registradas",
+        "MOLDE_INCOMPLETO": "Molde incompleto",
+        "NO_LIBERAR": "No liberar",
+        "RIESGO_AGARROTAMIENTO": "Riesgo de agarrotamiento",
+        "CONTINUAR": "Continuar",
+        "PREPARARSE": "Prepararse",
+    }
+    return labels.get(state, state.replace("_", " ").title())
+
+
+def _is_colado_closed(colado: dict[str, Any]) -> bool:
+    return str(colado.get("estado") or "").upper() == "CERRADO"
+
+
+def _format_zone_maturity(zone: dict[str, Any], fallback: str = "Sin dato de zona") -> str:
+    for key in ("avance_madurez_efectiva", "avance_madurez"):
+        if zone.get(key) is not None:
+            return f"{float(zone[key]) * 100:.1f}%"
+    if zone.get("madurez_h_eq") is not None:
+        return f"{float(zone['madurez_h_eq']):.2f} h_eq"
+    return fallback
+
+
+def _format_general_maturity(prediction: dict[str, Any]) -> str:
+    if prediction.get("madurez_acumulada_h_eq") is not None and prediction.get("estado") != "SIN_DATOS":
+        return f"{prediction.get('madurez_acumulada_h_eq')} h_eq"
+    return "Sin lectura general"
+
+
+def _format_zone_temperature(zone: dict[str, Any], latest_zone_reading: dict[str, Any] | None) -> str:
+    if zone.get("temperatura_actual_c") is not None:
+        return f"{float(zone['temperatura_actual_c']):.1f} C"
+    if latest_zone_reading and latest_zone_reading.get("temperatura_concreto_c") is not None:
+        return f"{float(latest_zone_reading['temperatura_concreto_c']):.1f} C"
+    return "Sin lectura"
+
+
+def _format_remaining_minutes(zone: dict[str, Any]) -> str:
+    if zone.get("minutos_restantes_deslizar_ajustado") is not None:
+        return f"{float(zone['minutos_restantes_deslizar_ajustado']):.1f} min"
+    if zone.get("minutos_restantes_deslizar") is not None:
+        return f"{float(zone['minutos_restantes_deslizar']):.1f} min"
+    if zone.get("estado_zona") == "LIBERABLE":
+        return "Lista para evaluar"
+    if zone.get("estado_zona") == "LIBERADA":
+        return "Liberada"
+    if zone.get("hora_estimada_lista"):
+        return f"Estimada {zone.get('hora_estimada_lista')}"
+    return "Sin estimacion"
+
+
+def _latest_zone_temperature(readings: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not readings:
+        return None
+    return sorted(readings, key=lambda row: str(row.get("fecha_hora") or ""))[-1]
+
+
+def _format_latest_zone_reading(reading: dict[str, Any] | None) -> str:
+    if not reading:
+        return "Sin lectura"
+    zone = reading.get("zona_numero") or "--"
+    time = reading.get("fecha_hora") or "--"
+    temp = reading.get("temperatura_concreto_c")
+    temp_label = f"{float(temp):.1f} C" if temp is not None else "sin temperatura"
+    return f"Zona {zone} | {time} | {temp_label}"
+
+
 def render_colado_report(
     colado: dict[str, Any],
     readings: list[dict[str, Any]],
@@ -578,7 +748,8 @@ def render_colado_report(
     <div class="box"><b>Velocidad real</b><br>{esc(mold_state.get('velocidad_real_cm_h'))} cm/h</div>
     <div class="box"><b>Siguiente avance</b><br>{esc(next_move.get('avance_cm'))} cm</div>
   </div>"""
-    avance_pct = round(float(prediction.get("avance") or 0) * 100, 1)
+    status_line = _printable_status_line(colado, mold_state, control_context, zone_temperature_readings, prediction)
+    operational_summary = _printable_operational_summary(colado, prediction, mold_state, control_context, zone_temperature_readings)
     printable_control_summary = _printable_control_summary(control_context)
     return f"""<!doctype html>
 <html lang="es">
@@ -589,8 +760,11 @@ def render_colado_report(
     body {{ font-family: Arial, sans-serif; margin: 24px; color: #172026; }}
     h1, h2 {{ margin-bottom: 8px; }}
     h3 {{ margin: 10px 0 6px; font-size: 14px; }}
+    .report-meta {{ margin: 4px 0 14px; color: #334155; font-size: 15px; }}
     .summary {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }}
+    .operational-summary {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }}
     .box {{ border: 1px solid #ccd4d8; padding: 10px; border-radius: 6px; }}
+    .box small {{ color: #64748b; font-size: 11px; }}
     .control-summary {{ border: 1px solid #cbd5db; padding: 12px; margin: 16px 0 18px; background: #fbfcfd; }}
     .control-summary h2 {{ margin-top: 0; }}
     .control-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 12px; }}
@@ -608,13 +782,8 @@ def render_colado_report(
 <body>
   <button onclick="window.print()">Imprimir / Guardar PDF</button>
   <h1>Reporte De Colado #{esc(colado.get('id'))}</h1>
-  <p>Silo: {esc(colado.get('silo_id'))} - Estado: {esc(prediction.get('estado'))}</p>
-  <div class="summary">
-    <div class="box"><b>Madurez</b><br>{esc(prediction.get('madurez_acumulada_h_eq'))} h_eq</div>
-    <div class="box"><b>Avance</b><br>{avance_pct}%</div>
-    <div class="box"><b>Temp. actual</b><br>{esc(prediction.get('temperatura_actual_concreto_c'))} C</div>
-    <div class="box"><b>Min. restantes</b><br>{esc(prediction.get('minutos_estimados_restantes'))}</div>
-  </div>
+  <p class="report-meta">{esc(status_line)}</p>
+  {operational_summary}
   {printable_control_summary}
   {mold_summary}
   <h2>Zonas Del Molde</h2>
