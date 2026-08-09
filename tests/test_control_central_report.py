@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
-from slipform.db import create_colado, init_db, insert_mold_advance, insert_photo_evidence, insert_slide_event
-from slipform.http.report_handlers import render_colado_report, render_control_report
+from slipform.db import create_colado, create_zone, init_db, insert_mold_advance, insert_photo_evidence, insert_slide_event, insert_zone_reading
+from slipform.http.report_handlers import _get_zone_temperature_readings, render_colado_report, render_control_report
 from slipform.reports.control_central import build_control_report_context, days_between
 
 
@@ -276,6 +276,53 @@ class ControlCentralReportTests(unittest.TestCase):
         self.assertIn("Historico 2026-08-06", html)
         self.assertIn("2026-08-05T02:30", html)
         self.assertIn("Grafica de avance", html)
+
+    def test_printable_colado_report_replaces_general_readings_with_zone_temperatures(self) -> None:
+        colado_id = create_colado(
+            self.conn,
+            {"silo_id": "S1", "mezcla_id": 1, "hora_colocacion_en_molde": "2026-07-24T09:00"},
+        )
+        zone_id = create_zone(
+            self.conn,
+            {
+                "colado_id": colado_id,
+                "zona_numero": 1,
+                "elevacion_inferior_cm": 0,
+                "elevacion_superior_cm": 30,
+                "hora_salida_planta": "2026-07-24T09:00",
+                "hora_inicio_llenado": "2026-07-24T09:30",
+                "hora_referencia_madurez": "2026-07-24T09:00",
+                "mezcla_id": 1,
+            },
+        )
+        insert_zone_reading(
+            self.conn,
+            {
+                "zona_colado_id": zone_id,
+                "fecha_hora": "2026-07-24T10:10",
+                "temperatura_concreto_c": 35.4,
+                "temperatura_ambiente_c": 31.2,
+                "humedad_relativa_pct": 72,
+                "origen": "manual",
+            },
+        )
+        zone_temperatures = _get_zone_temperature_readings(self.conn, colado_id)
+
+        html = render_colado_report(
+            {"id": colado_id, "silo_id": "S1"},
+            [{"minuto_transcurrido": 70, "temperatura_concreto_c": 99, "origen": "manual"}],
+            [],
+            {"estado": "SIN_DATOS", "avance": 0},
+            zone_temperature_readings=zone_temperatures,
+        )
+
+        self.assertIn("Temperatura Por Zona", html)
+        self.assertIn("<th>Zona</th><th>Olla</th><th>Fecha</th>", html)
+        self.assertIn("2026-07-24T10:10", html)
+        self.assertIn("35.4", html)
+        self.assertIn("manual", html)
+        self.assertNotIn("<h2>Lecturas</h2>", html)
+        self.assertNotIn(">99<", html)
 
     def test_printable_colado_report_shows_event_date_not_elapsed_minute(self) -> None:
         colado_id = create_colado(

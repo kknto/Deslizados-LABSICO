@@ -123,6 +123,7 @@ def _colado_report_response(db_path: Path, colado_id: int) -> HttpBytesResponse:
         reference = get_reference_points(conn, colado.get("curva_id"))
         prediction = calculate_state(readings, colado.get("parametros"), reference)
         control_context = build_control_report_context(conn, colado_id)
+        zone_temperature_readings = _get_zone_temperature_readings(conn, colado_id)
     return _html_response(
         render_colado_report(
             colado,
@@ -135,6 +136,7 @@ def _colado_report_response(db_path: Path, colado_id: int) -> HttpBytesResponse:
             alarms,
             decisions,
             control_context,
+            zone_temperature_readings=zone_temperature_readings,
         )
     )
 
@@ -209,6 +211,33 @@ def _photo_zip_name(photo: dict[str, Any], extension: str) -> str:
     raw = str(photo.get("descripcion") or f"foto_{photo.get('id') or 'sin_id'}")
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", raw).strip("_")[:80] or "foto"
     return f"fotografias/{int(photo.get('id') or 0):04d}_{safe}.{extension}"
+
+
+def _get_zone_temperature_readings(conn, colado_id: int) -> list[dict[str, Any]]:
+    return [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT
+                lz.id,
+                z.zona_numero,
+                COALESCE(d.numero_olla, z.zona_numero) AS numero_olla,
+                COALESCE(d.hora_salida_planta, z.hora_salida_planta, z.hora_referencia_madurez) AS hora_salida_planta,
+                lz.fecha_hora,
+                lz.minuto_desde_zona,
+                lz.temperatura_concreto_c,
+                lz.temperatura_ambiente_c,
+                lz.humedad_relativa_pct,
+                lz.origen
+            FROM lecturas_zona lz
+            JOIN zonas_colado z ON z.id = lz.zona_colado_id
+            LEFT JOIN descargas_olla d ON d.id = z.descarga_olla_id
+            WHERE z.colado_id = ? AND lz.valido = 1
+            ORDER BY z.zona_numero, lz.minuto_desde_zona, lz.id
+            """,
+            (colado_id,),
+        ).fetchall()
+    ]
 
 
 def render_control_report(context: dict[str, Any]) -> str:
@@ -505,10 +534,24 @@ def render_colado_report(
     alarms: list[dict[str, Any]] | None = None,
     decisions: list[dict[str, Any]] | None = None,
     control_context: dict[str, Any] | None = None,
+    zone_temperature_readings: list[dict[str, Any]] | None = None,
 ) -> str:
     esc = escape_html
-    reading_rows = _rows(readings, lambda r: [r.get("minuto_transcurrido"), r.get("temperatura_concreto_c"), r.get("temperatura_ambiente_c"), r.get("humedad_relativa_pct"), r.get("origen")])
     event_rows = _rows(events, lambda e: [e.get("fecha_hora"), e.get("decision_tomada"), e.get("resultado_fisico"), e.get("velocidad_deslizamiento_cm_h"), e.get("supervisor"), e.get("observacion")])
+    zone_temperature_rows = _rows(
+        zone_temperature_readings or [],
+        lambda r: [
+            r.get("zona_numero"),
+            r.get("numero_olla"),
+            r.get("fecha_hora"),
+            r.get("hora_salida_planta"),
+            r.get("minuto_desde_zona"),
+            r.get("temperatura_concreto_c"),
+            r.get("temperatura_ambiente_c"),
+            r.get("humedad_relativa_pct"),
+            r.get("origen"),
+        ],
+    )
     zone_rows = _rows(
         zones or [],
         lambda z: [
@@ -586,8 +629,8 @@ def render_colado_report(
   <table><thead><tr><th>Fecha</th><th>Recomendacion</th><th>Decision</th><th>Conforme</th><th>Operador</th><th>Supervisor</th><th>Observacion</th></tr></thead><tbody>{decision_rows}</tbody></table>
   <h2>Eventos De Deslizamiento</h2>
   <table><thead><tr><th>Fecha</th><th>Decision</th><th>Resultado</th><th>Velocidad</th><th>Supervisor</th><th>Observacion</th></tr></thead><tbody>{event_rows}</tbody></table>
-  <h2>Lecturas</h2>
-  <table><thead><tr><th>Min</th><th>Concreto C</th><th>Ambiente C</th><th>HR %</th><th>Origen</th></tr></thead><tbody>{reading_rows}</tbody></table>
+  <h2>Temperatura Por Zona</h2>
+  <table><thead><tr><th>Zona</th><th>Olla</th><th>Fecha</th><th>Salida planta</th><th>Min zona</th><th>Concreto C</th><th>Ambiente C</th><th>HR %</th><th>Origen</th></tr></thead><tbody>{zone_temperature_rows}</tbody></table>
 </body>
 </html>"""
 
