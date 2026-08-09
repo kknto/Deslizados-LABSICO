@@ -28,6 +28,7 @@ from slipform.db import (
     initialize_colado_start_offset,
     init_db,
     insert_audit,
+    invalidate_zone_reading,
     insert_model_adjustment,
     insert_mold_advance,
     insert_photo_evidence,
@@ -220,6 +221,13 @@ def handle_post(path: str, db_path: Path, payload: dict[str, Any]) -> tuple[int,
             init_db(conn)
             result = release_zone_by_field_criteria(conn, payload)
         return 201, result
+
+    if path == "/api/lecturas-zona/anular":
+        with connect(db_path) as conn:
+            init_db(conn)
+            reading = invalidate_zone_reading(conn, payload)
+            state = calculate_mold_state(conn, int(reading["colado_id"]))
+        return 200, {"lectura": reading, "estado_molde": state}
 
     if path == "/api/lecturas-zona":
         with connect(db_path) as conn:
@@ -541,6 +549,7 @@ _CLOSED_BLOCKED_POST_PATHS = {
     "/api/zonas/asegurar-continuidad",
     "/api/zonas/liberar-por-criterio",
     "/api/lecturas-zona",
+    "/api/lecturas-zona/anular",
     "/api/avances",
     "/api/avances/registrar-5min",
     "/api/scada/confirmar-avance",

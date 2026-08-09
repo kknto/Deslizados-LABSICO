@@ -656,7 +656,7 @@ function trendsUrl(options = {}) {
   const params = new URLSearchParams({ colado_id: state.activeColadoId });
   const zoneId = options.zoneId ?? $("#trend-zone-select")?.value ?? "";
   const range = options.range || $("#trend-range-select")?.value || "4h";
-  if (zoneId) params.set("zona_id", zoneId);
+  if (/^\d+$/.test(String(zoneId || ""))) params.set("zona_id", zoneId);
   params.set("rango", range);
   if (options.asOf) params.set("as_of", options.asOf);
   else if (state.evaluationTime && options.useEvaluationTime !== false) params.set("as_of", state.evaluationTime);
@@ -3843,6 +3843,121 @@ async function confirmZoneTemperaturePayload(payload, zone) {
   return ok;
 }
 
+async function refreshZoneTemperatureHistory(zone, target) {
+  if (!target || !zone?.id) return;
+  target.innerHTML = `<div class="zone-temperature-history-empty">Cargando lecturas...</div>`;
+  try {
+    const result = await api(`/api/lecturas-zona?zona_id=${encodeURIComponent(zone.id)}`);
+    const readings = (result.lecturas || []).slice().reverse();
+    if (!readings.length) {
+      target.innerHTML = `<div class="zone-temperature-history-empty">Sin lecturas activas para esta zona.</div>`;
+      return;
+    }
+    target.innerHTML = `<table class="zone-temperature-history-table">
+      <thead><tr><th>Fecha</th><th>Concreto</th><th>Ambiente</th><th>HR</th><th></th></tr></thead>
+      <tbody>${readings
+        .map(
+          (reading) => `<tr>
+            <td>${escapeHtml(formatZoneTime(reading.fecha_hora))}</td>
+            <td>${format(reading.temperatura_concreto_c, 1)} C</td>
+            <td>${reading.temperatura_ambiente_c == null ? "--" : `${format(reading.temperatura_ambiente_c, 1)} C`}</td>
+            <td>${reading.humedad_relativa_pct == null ? "--" : `${format(reading.humedad_relativa_pct, 1)}%`}</td>
+            <td class="zone-temperature-history-actions">
+              <button type="button" class="button-small secondary zone-temperature-correct" data-reading-id="${escapeHtml(reading.id)}">Corregir</button>
+              <button type="button" class="button-small danger zone-temperature-invalidate" data-reading-id="${escapeHtml(reading.id)}">Anular</button>
+            </td>
+          </tr>`
+        )
+        .join("")}</tbody>
+    </table>`;
+    target.querySelectorAll(".zone-temperature-correct").forEach((button) => {
+      button.addEventListener("click", () => {
+        const reading = readings.find((item) => String(item.id) === String(button.dataset.readingId || ""));
+        loadZoneTemperatureCorrection(reading, zone, target);
+      });
+    });
+    target.querySelectorAll(".zone-temperature-invalidate").forEach((button) => {
+      button.addEventListener("click", async () => {
+        await invalidateZoneTemperatureReading(button.dataset.readingId, zone, target);
+      });
+    });
+  } catch (error) {
+    target.innerHTML = `<div class="zone-temperature-history-empty error">No se pudieron cargar las lecturas.</div>`;
+  }
+}
+
+function loadZoneTemperatureCorrection(reading, zone, target) {
+  const form = target?.closest("form");
+  if (!reading || !form) return;
+  form.dataset.correctReadingId = String(reading.id);
+  form.elements.fecha_hora.value = toDatetimeLocalValue(reading.fecha_hora) || formatDatetimeLocal(new Date());
+  form.elements.temperatura_concreto_c.value = reading.temperatura_concreto_c ?? "";
+  form.elements.temperatura_ambiente_c.value = reading.temperatura_ambiente_c ?? "";
+  form.elements.humedad_relativa_pct.value = reading.humedad_relativa_pct ?? "";
+  const confirm = $("#zone-temperature-confirm");
+  const warning = $("#zone-temperature-warning");
+  if (confirm) confirm.textContent = "Guardar correccion";
+  if (warning) {
+    warning.hidden = false;
+    warning.textContent = `Corrigiendo lectura de Zona ${zone.zona_numero}. Al guardar, la lectura anterior quedara anulada con auditoria.`;
+  }
+  form.elements.temperatura_concreto_c.focus();
+}
+
+async function invalidateZoneTemperatureReading(readingId, zone, target) {
+  if (!readingId || !zone?.id) return;
+  if (isColadoClosed()) {
+    await appAlert("El colado esta finalizado. Reabre el colado antes de anular lecturas.", {
+      title: "Colado finalizado",
+      type: "warning",
+    });
+    return;
+  }
+  const reason = await appPrompt("Captura el motivo para anular esta lectura de temperatura.", "", {
+    title: `Anular lectura Zona ${zone.zona_numero}`,
+    promptLabel: "Motivo",
+    confirmText: "Anular lectura",
+    type: "danger",
+  });
+  const cleanReason = String(reason || "").trim();
+  if (!cleanReason) {
+    showAppNotice("La anulacion requiere motivo.", "error");
+    return;
+  }
+  const ok = await appConfirm(
+    `Se anulara la lectura seleccionada de Zona ${zone.zona_numero}. La madurez se recalculara usando solo lecturas validas.`,
+    {
+      title: "Confirmar anulacion",
+      type: "danger",
+      confirmText: "Anular",
+      cancelText: "Cancelar",
+    }
+  );
+  if (!ok) return;
+  try {
+    await api("/api/lecturas-zona/anular", {
+      method: "POST",
+      body: JSON.stringify({
+        colado_id: state.activeColadoId,
+        lectura_id: readingId,
+        motivo: cleanReason,
+        operador: activeColado()?.operador || "",
+      }),
+    });
+    await refreshZoneTemperatureHistory(zone, target);
+    await refreshPrediction();
+    await refreshMoldState();
+    await refreshScadaState();
+    await refreshTrends();
+    showAppNotice(`Lectura anulada para Zona ${zone.zona_numero}.`, "ok");
+  } catch (error) {
+    await appAlert("No se pudo anular la lectura: " + error.message, {
+      title: "Error",
+      type: "danger",
+    });
+  }
+}
+
 function openOperatorZoneTemperatureDialog(zoneId) {
   const backdrop = $("#zone-temperature-dialog");
   const form = $("#zone-temperature-form");
@@ -3861,11 +3976,15 @@ function openOperatorZoneTemperatureDialog(zoneId) {
   const message = $("#zone-temperature-dialog-message");
   const summary = $("#zone-temperature-summary");
   const warning = $("#zone-temperature-warning");
+  const history = $("#zone-temperature-history");
   const cancel = $("#zone-temperature-cancel");
   const dialog = backdrop.querySelector(".zone-temperature-dialog");
   form.reset();
+  delete form.dataset.correctReadingId;
   form.elements.zona_colado_id.value = zone.id;
   form.elements.fecha_hora.value = formatDatetimeLocal(new Date());
+  const confirm = $("#zone-temperature-confirm");
+  if (confirm) confirm.textContent = "Guardar temperatura";
   if (title) title.textContent = `Temperatura Zona ${zone.zona_numero}`;
   if (message) message.textContent = "Guarda una lectura manual sin cambiar de pestana ni registrar avance.";
   if (summary) summary.textContent = operatorZoneSummary(zone);
@@ -3875,6 +3994,7 @@ function openOperatorZoneTemperatureDialog(zoneId) {
       ? ""
       : `Esta lectura se guardara para Zona ${zone.zona_numero}, no para la zona actualmente a liberar.`;
   }
+  refreshZoneTemperatureHistory(zone, history);
   backdrop.hidden = false;
   document.body.classList.add("app-dialog-open");
   setTimeout(() => form.elements.temperatura_concreto_c.focus(), 0);
@@ -3899,7 +4019,17 @@ function openOperatorZoneTemperatureDialog(zoneId) {
       payload.colado_id = state.activeColadoId;
       payload.origen = "manual";
       if (!(await confirmZoneTemperaturePayload(payload, zone))) return;
-      finish({ zone, payload });
+      const correctionId = form.dataset.correctReadingId || "";
+      finish({
+        zone,
+        payload,
+        correction: correctionId
+          ? {
+              lectura_id: correctionId,
+              motivo: `Correccion de lectura de temperatura de Zona ${zone.zona_numero}.`,
+            }
+          : null,
+      });
     };
     const onCancel = () => finish(null);
     const onBackdrop = (event) => {
@@ -3936,12 +4066,26 @@ async function saveOperatorZoneTemperature(zoneId) {
   const result = await openOperatorZoneTemperatureDialog(zoneId);
   if (!result) return;
   try {
-    await api("/api/lecturas-zona", { method: "POST", body: JSON.stringify(result.payload) });
+    const created = await api("/api/lecturas-zona", { method: "POST", body: JSON.stringify(result.payload) });
+    if (result.correction?.lectura_id) {
+      await api("/api/lecturas-zona/anular", {
+        method: "POST",
+        body: JSON.stringify({
+          colado_id: state.activeColadoId,
+          lectura_id: result.correction.lectura_id,
+          motivo: `${result.correction.motivo} Reemplazada por lectura ${created.id}.`,
+          operador: activeColado()?.operador || "",
+        }),
+      });
+    }
     await refreshPrediction();
     await refreshMoldState();
     await refreshScadaState();
     await refreshTrends();
-    showAppNotice(`Temperatura guardada para Zona ${result.zone.zona_numero}.`, "ok");
+    showAppNotice(
+      result.correction ? `Correccion guardada para Zona ${result.zone.zona_numero}.` : `Temperatura guardada para Zona ${result.zone.zona_numero}.`,
+      "ok"
+    );
   } catch (error) {
     if (error.status) {
       await appAlert("No se pudo guardar la temperatura de zona: " + error.message, {

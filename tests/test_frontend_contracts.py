@@ -101,13 +101,18 @@ class FrontendContractTests(unittest.TestCase):
             "zone-temperature-dialog",
             "zone-temperature-form",
             "zone-temperature-input",
+            "zone-temperature-history",
         ):
             self.assertIn(f'id="{element_id}"', index)
         self.assertIn("function renderOperationalGuidance()", legacy)
         self.assertIn("async function handleOperatorAction", legacy)
         self.assertIn("function openOperatorZoneTemperatureDialog", legacy)
         self.assertIn("async function saveOperatorZoneTemperature", legacy)
+        self.assertIn("function loadZoneTemperatureCorrection", legacy)
+        self.assertIn("async function invalidateZoneTemperatureReading", legacy)
+        self.assertIn("Guardar correccion", legacy)
         self.assertIn("/api/lecturas-zona", legacy)
+        self.assertIn("/api/lecturas-zona/anular", legacy)
         self.assertIn("function rememberLocalInspection", legacy)
         self.assertIn("localInspectionSignals", legacy)
         self.assertIn("dataQualityIssues", legacy)
@@ -128,6 +133,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function renderOperatorDataChecklist", legacy)
         self.assertIn("function renderOperatorLog", legacy)
         self.assertIn("function eventLogText", legacy)
+        self.assertIn('/^\\d+$/.test(String(zoneId || ""))', legacy)
         self.assertNotIn('text: `${event.decision_tomada || "--"}; minuto ${format(event.minuto_transcurrido, 1)}.`', legacy)
         self.assertIn("/api/export/bitacora.csv", legacy)
 

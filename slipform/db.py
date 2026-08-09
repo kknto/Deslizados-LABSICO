@@ -29,7 +29,9 @@ from slipform.repositories.zonas_repo import (  # noqa: F401
     get_zones,
     get_zones_generated_by_advance,
     initialize_colado_start_offset,
+    invalidate_zone_reading,
     insert_zone_reading,
+    list_zone_readings,
     register_truck_zone,
 )
 from slipform.repositories.evidencia_repo import (  # noqa: F401

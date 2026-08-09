@@ -18,6 +18,7 @@ from slipform.db import (
     get_sensor_health,
     get_zones,
     init_db,
+    list_zone_readings,
     list_advance_recipes,
     list_bootstrap,
     list_model_adjustments,
@@ -107,6 +108,13 @@ def handle_get(path: str, query: str, db_path: Path) -> tuple[int, dict[str, Any
         with connect(db_path) as conn:
             init_db(conn)
             return 200, {"zonas": get_zones(conn, colado_id)}
+
+    if path == "/api/lecturas-zona":
+        zone_id = int(params.get("zona_id", ["0"])[0])
+        with connect(db_path) as conn:
+            init_db(conn)
+            readings = list_zone_readings(conn, zone_id) if zone_id else []
+            return 200, {"lecturas": readings}
 
     if path == "/api/descargas":
         colado_id = int(params.get("colado_id", ["0"])[0])

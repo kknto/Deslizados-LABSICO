@@ -1015,6 +1015,63 @@
   font-weight: 850;
 }
 
+.zone-temperature-history {
+  margin-top: 14px;
+}
+
+.zone-temperature-history-title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 950;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.zone-temperature-history-list {
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.zone-temperature-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.zone-temperature-history-table th,
+.zone-temperature-history-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.zone-temperature-history-table th {
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.zone-temperature-history-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.zone-temperature-history-empty {
+  padding: 12px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.zone-temperature-history-empty.error {
+  color: var(--red);
+}
+
 .operator-dialog.authorization .app-dialog-status {
   background: var(--red);
 }

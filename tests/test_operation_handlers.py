@@ -7,7 +7,16 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
-from slipform.db import generate_zones, get_active_advance_recipe, get_colado, get_readings, get_zones, init_db
+from slipform.db import (
+    generate_zones,
+    get_active_advance_recipe,
+    get_colado,
+    get_readings,
+    get_zone_readings,
+    get_zones,
+    init_db,
+    list_audit,
+)
 from slipform.domain.data_quality import DataQualityWarningError
 from slipform.mold import calculate_mold_state
 from slipform.http.operation_handlers import handle_delete, handle_post, handle_put
@@ -488,6 +497,79 @@ class OperationHandlersTests(unittest.TestCase):
         )
         self.assertEqual(status, 201)
         self.assertIn("id", body)
+
+    def test_zone_temperature_reading_can_be_invalidated_with_audit(self) -> None:
+        _, created = handle_post(
+            "/api/colados",
+            self.db_path,
+            {
+                "silo_id": "S1",
+                "mezcla_id": 1,
+                "hora_colocacion_en_molde": "2026-07-24T09:00",
+                "operador": "Operador 1",
+            },
+        )
+        colado_id = created["id"]
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            generate_zones(
+                conn,
+                {
+                    "colado_id": colado_id,
+                    "hora_zona_1": "2026-07-24T09:00",
+                    "zonas": 1,
+                    "temperatura_inicial_c": 30,
+                },
+            )
+            zone_id = get_zones(conn, colado_id)[0]["id"]
+        finally:
+            conn.close()
+
+        _, wrong = handle_post(
+            "/api/lecturas-zona",
+            self.db_path,
+            {
+                "colado_id": colado_id,
+                "zona_colado_id": zone_id,
+                "fecha_hora": "2026-07-24T09:30",
+                "temperatura_concreto_c": 60,
+            },
+        )
+        _, correct = handle_post(
+            "/api/lecturas-zona",
+            self.db_path,
+            {
+                "colado_id": colado_id,
+                "zona_colado_id": zone_id,
+                "fecha_hora": "2026-07-24T09:35",
+                "temperatura_concreto_c": 31,
+            },
+        )
+
+        status, body = handle_post(
+            "/api/lecturas-zona/anular",
+            self.db_path,
+            {
+                "colado_id": colado_id,
+                "lectura_id": wrong["id"],
+                "motivo": "Captura equivocada",
+                "operador": "Operador 1",
+            },
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["lectura"]["valido"], 0)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            active_readings = get_zone_readings(conn, zone_id)
+            audit = list_audit(conn, limit=5)
+        finally:
+            conn.close()
+        self.assertEqual([reading["id"] for reading in active_readings], [correct["id"]])
+        self.assertEqual(active_readings[0]["temperatura_concreto_c"], 31)
+        self.assertTrue(any(row["accion"] == "INVALIDATE_ZONE_READING" for row in audit))
 
     def test_advance_handler_returns_mold_state(self) -> None:
         _, created = handle_post(

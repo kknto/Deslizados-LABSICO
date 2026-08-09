@@ -674,6 +674,52 @@ def list_zone_readings(conn: sqlite3.Connection, zone_id: int) -> list[dict[str,
     return get_zone_readings(conn, zone_id)
 
 
+def invalidate_zone_reading(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[str, Any]:
+    reading_id = int(payload["lectura_id"])
+    reason = str(payload.get("motivo") or "").strip()
+    if not reason:
+        raise ValueError("Captura el motivo para anular la lectura.")
+    row = conn.execute(
+        """
+        SELECT lz.*, z.colado_id, z.zona_numero
+        FROM lecturas_zona lz
+        JOIN zonas_colado z ON z.id = lz.zona_colado_id
+        WHERE lz.id = ?
+        """,
+        (reading_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Lectura de zona no encontrada.")
+    reading = dict(row)
+    if payload.get("colado_id") not in (None, "") and int(payload["colado_id"]) != int(reading["colado_id"]):
+        raise ValueError("La lectura no pertenece al colado activo.")
+    if int(reading.get("valido") or 0) == 0:
+        raise ValueError("La lectura ya estaba anulada.")
+    conn.execute("UPDATE lecturas_zona SET valido = 0 WHERE id = ?", (reading_id,))
+    insert_audit(
+        conn,
+        "INVALIDATE_ZONE_READING",
+        "lecturas_zona",
+        entity_id=reading_id,
+        colado_id=int(reading["colado_id"]),
+        operator=payload.get("operador"),
+        reason=reason,
+        detail={
+            "zona_colado_id": reading.get("zona_colado_id"),
+            "zona_numero": reading.get("zona_numero"),
+            "fecha_hora": reading.get("fecha_hora"),
+            "minuto_desde_zona": reading.get("minuto_desde_zona"),
+            "temperatura_concreto_c": reading.get("temperatura_concreto_c"),
+            "temperatura_ambiente_c": reading.get("temperatura_ambiente_c"),
+            "humedad_relativa_pct": reading.get("humedad_relativa_pct"),
+            "origen": reading.get("origen"),
+        },
+    )
+    conn.commit()
+    reading["valido"] = 0
+    return reading
+
+
 def upsert_zone(conn: sqlite3.Connection, payload: dict[str, Any]) -> int:
     return create_zone(conn, payload)
 
@@ -797,6 +843,7 @@ __all__ = [
     "get_zones",
     "get_zones_generated_by_advance",
     "initialize_colado_start_offset",
+    "invalidate_zone_reading",
     "insert_zone_reading",
     "list_zone_readings",
     "list_zones",
