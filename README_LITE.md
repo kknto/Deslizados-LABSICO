@@ -32,7 +32,7 @@ La version Lite puede publicarse en Render con el Blueprint incluido en `render.
 
 - El repositorio no debe incluir `data/slipform.sqlite`, respaldos ni evidencias reales.
 - Render crea una base PostgreSQL administrada nueva y separada para este proyecto.
-- `python -m slipform.cloud_init` crea schema, proyecto base, configuracion de molde y curvas HRP antes del arranque.
+- Al arrancar, el servidor crea schema, proyecto base, configuracion de molde y curvas HRP con reintentos si PostgreSQL tarda en responder.
 - La app en nube usa `DATABASE_URL`, `SLIPFORM_HOST` y `PORT` para arrancar correctamente.
 
 Ver instrucciones completas en `DEPLOY_RENDER.md`.

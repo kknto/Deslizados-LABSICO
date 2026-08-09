@@ -91,8 +91,8 @@ services/written_log_ocr.py       OCR experimental; genera candidatos, nunca esc
 ## Despliegue Web
 
 - `render.yaml` define el servicio Python, base PostgreSQL administrada, health check y comandos de arranque.
-- `preDeployCommand` ejecuta `python -m slipform.cloud_init`.
 - `startCommand` ejecuta `python -m slipform.server`.
+- El arranque ejecuta `slipform.cloud_init` con reintentos para cubrir la espera inicial de PostgreSQL en Render.
 - El servidor toma `PORT` y `SLIPFORM_HOST` del entorno cuando existen, preservando `127.0.0.1:8010` para uso local.
 - En ausencia de `DATABASE_URL`, el servidor usa SQLite local; en Render usa PostgreSQL.
 

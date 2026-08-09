@@ -7,11 +7,11 @@ Este proyecto incluye `render.yaml` para crear el servicio web desde un Blueprin
 - Servicio web Python `deslizados-labsico`.
 - Base PostgreSQL administrada `deslizados-labsico-db`.
 - `DATABASE_URL` conectado desde la base al servicio web.
-- Inicializacion idempotente con `python -m slipform.cloud_init` antes del arranque.
+- Inicializacion idempotente al arrancar el servidor, con reintentos si PostgreSQL tarda en aceptar conexiones.
 
 ## Base De Datos
 
-No se sube `data/slipform.sqlite` al repositorio para evitar publicar datos reales. En Render, PostgreSQL es la base activa; la primera inicializacion crea schema, proyecto base, configuracion de molde y curvas HRP importadas desde `Curvas HRP.xlsx`.
+No se sube `data/slipform.sqlite` al repositorio para evitar publicar datos reales. En Render, PostgreSQL es la base activa; el primer arranque crea schema, proyecto base, configuracion de molde y curvas HRP importadas desde `Curvas HRP.xlsx`.
 
 Si despues necesitas llevar datos historicos a internet, usa los flujos de importacion de la app. Los respaldos de produccion se gestionan desde Render Postgres.
 

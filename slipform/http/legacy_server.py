@@ -227,7 +227,7 @@ def run(host: str | None = None, port: int | None = None) -> None:
     initialize_database(DB_PATH)
     server = ThreadingHTTPServer((host, port), SlipformHandler)
     print(f"Servidor iniciado en http://{host}:{port}")
-    print(f"SQLite activo: {DB_PATH}")
+    print(f"Base local SQLite: {DB_PATH}")
     server.serve_forever()
 
 
