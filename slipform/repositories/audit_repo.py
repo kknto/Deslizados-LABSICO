@@ -34,6 +34,9 @@ def database_counts(conn: sqlite3.Connection) -> dict[str, int]:
         "decisiones_operador",
         "fotografias_evidencia",
         "lecturas_desplome",
+        "mezclas",
+        "curvas_laboratorio",
+        "curvas_laboratorio_puntos",
     ]
     counts: dict[str, int] = {}
     for table in tables:

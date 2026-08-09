@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from slipform.cloud_init import initialize_database
 from slipform.http.legacy_server import resolve_runtime_config
+from slipform.http.query_handlers import handle_get
 from slipform.repositories import schema
 from slipform.repositories.connection import connect, database_engine
 from slipform.services.backups import create_sqlite_backup
@@ -74,6 +75,19 @@ class CloudDeployTests(unittest.TestCase):
             self.assertGreater(first["imported_curves"], 0)
             self.assertEqual(second["imported_curves"], 0)
             self.assertEqual(second["curve_count"], first["curve_count"])
+
+    def test_bootstrap_seeds_catalog_when_database_has_no_curves(self) -> None:
+        curves_path = ROOT / "Curvas HRP.xlsx"
+        if not curves_path.exists():
+            self.skipTest("Curvas HRP.xlsx no esta disponible")
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "slipform.sqlite"
+
+            status, body = handle_get("/api/bootstrap", "", db_path)
+
+            self.assertEqual(status, 200)
+            self.assertGreater(len(body["mezclas"]), 0)
+            self.assertGreater(len(body["curvas"]), 0)
 
     def test_init_db_uses_postgres_schema_for_postgres_connection(self) -> None:
         conn = _FakePostgresConnection()

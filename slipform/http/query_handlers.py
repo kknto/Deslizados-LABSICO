@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
+from slipform.cloud_init import initialize_database
 from slipform.domain.data_quality import build_data_quality_report
 from slipform.db import (
     connect,
@@ -33,6 +34,7 @@ def handle_get(path: str, query: str, db_path: Path) -> tuple[int, dict[str, Any
     params = parse_qs(query)
 
     if path == "/api/bootstrap":
+        initialize_database(db_path, attempts=1, delay_seconds=0)
         with connect(db_path) as conn:
             init_db(conn)
             return 200, list_bootstrap(conn)
