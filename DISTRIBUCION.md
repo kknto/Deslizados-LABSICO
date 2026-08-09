@@ -39,7 +39,7 @@ Para GitHub/Render se distribuye solo el codigo, estaticos, documentacion y arch
 - `reports/` generados
 - `node_modules/`
 
-Render crea su propia SQLite limpia durante el arranque del servidor y la conserva en el disco persistente `/var/data`.
+Render crea su propia base PostgreSQL administrada mediante `render.yaml`. SQLite se conserva solo para ejecucion local Windows/portable.
 
 ## Generar Paquete
 

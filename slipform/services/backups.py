@@ -8,12 +8,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from slipform.repositories.connection import database_engine
+
 
 def backup_dir_for(db_path: Path) -> Path:
     return db_path.parent / "backups"
 
 
 def create_sqlite_backup(db_path: Path, reason: str = "manual") -> dict[str, Any]:
+    if database_engine() == "postgres":
+        return _postgres_backup_notice(reason)
     source_path = Path(db_path)
     if not source_path.exists():
         raise FileNotFoundError(f"No existe la base SQLite: {source_path}")
@@ -43,6 +47,8 @@ def backup_info(path: Path) -> dict[str, Any]:
 
 
 def list_sqlite_backups(db_path: Path) -> list[dict[str, Any]]:
+    if database_engine() == "postgres":
+        return []
     backup_dir = backup_dir_for(Path(db_path))
     if not backup_dir.exists():
         return []
@@ -51,6 +57,15 @@ def list_sqlite_backups(db_path: Path) -> list[dict[str, Any]]:
         key=lambda item: item["fecha_hora"],
         reverse=True,
     )
+
+
+def _postgres_backup_notice(reason: str) -> dict[str, Any]:
+    return {
+        "tipo": "postgres_render",
+        "motivo": reason,
+        "disponible": False,
+        "mensaje": "En PostgreSQL los respaldos de produccion se gestionan desde Render Postgres.",
+    }
 
 
 __all__ = ["backup_dir_for", "backup_info", "create_sqlite_backup", "list_sqlite_backups"]

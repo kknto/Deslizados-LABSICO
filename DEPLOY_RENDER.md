@@ -5,24 +5,24 @@ Este proyecto incluye `render.yaml` para crear el servicio web desde un Blueprin
 ## Que Se Crea
 
 - Servicio web Python `deslizados-labsico`.
-- Disco persistente de 1 GB montado en `/var/data`.
-- SQLite activa en `/var/data/slipform.sqlite`.
-- Inicializacion idempotente al arrancar con `python -m slipform.cloud_init`.
+- Base PostgreSQL administrada `deslizados-labsico-db`.
+- `DATABASE_URL` conectado desde la base al servicio web.
+- Inicializacion idempotente con `python -m slipform.cloud_init` antes del arranque.
 
 ## Base De Datos
 
-No se sube `data/slipform.sqlite` al repositorio para evitar publicar datos reales. En Render, la primera ejecucion del servidor crea una SQLite nueva con schema, proyecto base, configuracion de molde y curvas HRP importadas desde `Curvas HRP.xlsx`.
+No se sube `data/slipform.sqlite` al repositorio para evitar publicar datos reales. En Render, PostgreSQL es la base activa; la primera inicializacion crea schema, proyecto base, configuracion de molde y curvas HRP importadas desde `Curvas HRP.xlsx`.
 
-Si despues necesitas llevar datos historicos a internet, usa la exportacion/importacion de respaldo desde la app, no reemplaces archivos dentro del repositorio.
+Si despues necesitas llevar datos historicos a internet, usa los flujos de importacion de la app. Los respaldos de produccion se gestionan desde Render Postgres.
 
 ## Pasos Minimos En Render
 
 1. Crear un nuevo Blueprint.
 2. Conectar el repositorio `kknto/Deslizados-LABSICO`.
-3. Render detecta `render.yaml` y crea el servicio.
+3. Render detecta `render.yaml` y crea el servicio web mas la base PostgreSQL.
 4. Abrir la URL publica cuando el estado quede `Live`.
 5. Verificar `/api/health`.
 
 ## Notas De Escalabilidad
 
-SQLite con disco persistente es adecuado para una instancia web sencilla y pocos usuarios. Si el sistema va a operar con varios usuarios simultaneos o mas de una instancia, el siguiente paso tecnico debe ser migrar la capa de repositorios a PostgreSQL.
+SQLite se conserva para Windows local/portable. Render usa PostgreSQL desde el inicio para evitar migraciones futuras con datos reales.

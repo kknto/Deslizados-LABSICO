@@ -31,9 +31,9 @@ Tambien se puede usar doble clic en `INICIAR_LITE.bat`.
 La version Lite puede publicarse en Render con el Blueprint incluido en `render.yaml`.
 
 - El repositorio no debe incluir `data/slipform.sqlite`, respaldos ni evidencias reales.
-- Render crea una SQLite limpia en `/var/data/slipform.sqlite` sobre disco persistente.
-- Al arrancar, `python -m slipform.server` ejecuta una inicializacion idempotente que crea schema, proyecto base, configuracion de molde y curvas HRP cuando la base no existe.
-- La app en nube usa `SLIPFORM_DB_PATH`, `SLIPFORM_HOST` y `PORT` para arrancar correctamente.
+- Render crea una base PostgreSQL administrada nueva y separada para este proyecto.
+- `python -m slipform.cloud_init` crea schema, proyecto base, configuracion de molde y curvas HRP antes del arranque.
+- La app en nube usa `DATABASE_URL`, `SLIPFORM_HOST` y `PORT` para arrancar correctamente.
 
 Ver instrucciones completas en `DEPLOY_RENDER.md`.
 
@@ -57,7 +57,8 @@ Ver instrucciones completas en `DEPLOY_RENDER.md`.
 ## Archivos Clave
 
 - `slipform/mold.py`: estado del molde, zonas, madurez y avance operativo.
-- `slipform/repositories/schema.py`: schema SQLite compatible con respaldos antiguos.
+- `slipform/repositories/schema.py`: schema SQLite local y seleccion de schema PostgreSQL para Render.
+- `slipform/repositories/postgres_schema.py`: schema PostgreSQL para despliegue web.
 - `slipform/repositories/schedule_repo.py`: programa por cilindros.
 - `slipform/services/written_log_import.py`: plantillas CSV, vista previa e importacion validada de bitacora escrita.
 - `static/index.html`: vistas visibles Lite.
@@ -72,7 +73,7 @@ La base activa es `data/slipform.sqlite`. Antes de la limpieza se genero un resp
 
 La base limpia conserva mezclas, curvas HRP y puntos de madurez importados desde `Curvas HRP.xlsx`, e inicia sin colados reales, avances, alarmas ni decisiones historicas.
 
-En despliegues web, la base activa no vive en `data/`; vive en el disco persistente configurado por `SLIPFORM_DB_PATH`. Para migrar datos historicos a internet se debe usar el flujo de respaldo/importacion de la app.
+En despliegues web, la base activa es PostgreSQL y se conecta mediante `DATABASE_URL`. Para migrar datos historicos a internet se debe usar el flujo de importacion de la app.
 
 ## Bitacora Escrita
 

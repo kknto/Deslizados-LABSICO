@@ -17,22 +17,28 @@ def upsert_mezcla(
     dosificacion_hrp_cc: float | None = None,
     aditivo: str | None = "HRP",
 ) -> int:
-    conn.execute(
+    row = conn.execute(
         """
-        INSERT OR IGNORE INTO mezclas(nombre, aditivo, dosificacion_hrp_cc, observaciones)
+        SELECT id FROM mezclas
+        WHERE nombre = ?
+          AND (
+              (dosificacion_hrp_cc IS NULL AND ? IS NULL)
+              OR dosificacion_hrp_cc = ?
+          )
+        """,
+        (nombre, dosificacion_hrp_cc, dosificacion_hrp_cc),
+    ).fetchone()
+    if row:
+        return int(row["id"])
+
+    row = conn.execute(
+        """
+        INSERT INTO mezclas(nombre, aditivo, dosificacion_hrp_cc, observaciones)
         VALUES (?, ?, ?, ?)
+        RETURNING id
         """,
         (nombre, aditivo, dosificacion_hrp_cc, "Importada desde curvas de laboratorio."),
-    )
-    row = conn.execute(
-        "SELECT id FROM mezclas WHERE nombre = ? AND dosificacion_hrp_cc IS ?",
-        (nombre, dosificacion_hrp_cc),
     ).fetchone()
-    if row is None:
-        row = conn.execute(
-            "SELECT id FROM mezclas WHERE nombre = ? AND dosificacion_hrp_cc = ?",
-            (nombre, dosificacion_hrp_cc),
-        ).fetchone()
     return int(row["id"])
 
 
@@ -45,23 +51,6 @@ def insert_curve(
     params: dict[str, float] | None = None,
 ) -> int:
     cfg = DEFAULT_PARAMS | (params or {})
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO curvas_laboratorio(
-            mezcla_id, origen_archivo, nombre_curva, fecha_ensayo,
-            madurez_objetivo_h_eq, parametros_json
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            mezcla_id,
-            origen_archivo,
-            nombre_curva,
-            None,
-            cfg["target_maturity_h_eq"],
-            json.dumps(cfg, ensure_ascii=False),
-        ),
-    )
     row = conn.execute(
         """
         SELECT id
@@ -70,6 +59,25 @@ def insert_curve(
         """,
         (origen_archivo, nombre_curva),
     ).fetchone()
+    if row is None:
+        row = conn.execute(
+            """
+            INSERT INTO curvas_laboratorio(
+                mezcla_id, origen_archivo, nombre_curva, fecha_ensayo,
+                madurez_objetivo_h_eq, parametros_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                mezcla_id,
+                origen_archivo,
+                nombre_curva,
+                None,
+                cfg["target_maturity_h_eq"],
+                json.dumps(cfg, ensure_ascii=False),
+            ),
+        ).fetchone()
     curve_id = int(row["id"])
     conn.execute("DELETE FROM curvas_laboratorio_puntos WHERE curva_id = ?", (curve_id,))
     conn.executemany(

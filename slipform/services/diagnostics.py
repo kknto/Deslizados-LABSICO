@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from slipform.db import database_counts, get_schema_version
+from slipform.repositories.connection import database_engine
 from slipform.services.backups import list_sqlite_backups
 
 
@@ -23,16 +24,24 @@ def service_worker_version(static_root: Path) -> str:
 
 def health_report(conn, db_path: Path, static_root: Path) -> dict[str, Any]:
     db_path = Path(db_path)
+    engine = database_engine(conn)
     backups = list_sqlite_backups(db_path)
+    database = {
+        "engine": engine,
+        "schema": get_schema_version(conn),
+        "counts": database_counts(conn),
+    }
     return {
         "ok": True,
         "server_time": datetime.now().isoformat(timespec="seconds"),
+        "database": database,
         "sqlite": {
+            "engine": engine,
             "path": str(db_path),
-            "exists": db_path.exists(),
-            "bytes": db_path.stat().st_size if db_path.exists() else 0,
-            "schema": get_schema_version(conn),
-            "counts": database_counts(conn),
+            "exists": db_path.exists() if engine == "sqlite" else False,
+            "bytes": db_path.stat().st_size if engine == "sqlite" and db_path.exists() else 0,
+            "schema": database["schema"],
+            "counts": database["counts"],
         },
         "backups": {
             "total": len(backups),

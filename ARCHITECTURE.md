@@ -7,7 +7,7 @@ El proyecto Lite es una app local Windows para operar el deslizamiento con una U
 ```text
 slipform/
   domain/          Reglas puras y modelos de negocio.
-  repositories/    SQLite, migraciones y consultas por agregado.
+  repositories/    SQLite local, PostgreSQL cloud, migraciones y consultas por agregado.
   services/        Casos de uso de colados, molde, programa, reportes y soporte.
   http/            Rutas HTTP, handlers y respuestas.
   reports/         HTML, CSV y paquetes de exportacion.
@@ -75,9 +75,9 @@ services/written_log_ocr.py       OCR experimental; genera candidatos, nunca esc
 
 ## Convenciones
 
-- SQLite es la fuente local de verdad.
-- En nube, `SLIPFORM_DB_PATH` define la ruta de SQLite. Render usa `/var/data/slipform.sqlite` sobre disco persistente.
-- La base SQLite no se versiona en GitHub; `slipform.cloud_init` crea schema y curvas al arrancar si la base esta vacia.
+- SQLite es la fuente local de verdad para Windows/portable.
+- PostgreSQL es la fuente de verdad en Render mediante `DATABASE_URL`.
+- La base SQLite no se versiona en GitHub; `slipform.cloud_init` crea schema y curvas en el motor activo si la base esta vacia.
 - Toda conexion debe habilitar `PRAGMA foreign_keys=ON` y cerrarse correctamente.
 - Las URLs publicas usadas por las vistas Lite no deben cambiar sin prueba de contrato.
 - `legacy-app.js` se mantiene como orquestador temporal; nuevas responsabilidades visibles deben moverse gradualmente a `view-operator`, `view-capture`, `view-program` y `view-report`.
@@ -90,10 +90,11 @@ services/written_log_ocr.py       OCR experimental; genera candidatos, nunca esc
 
 ## Despliegue Web
 
-- `render.yaml` define el servicio Python, disco persistente, health check y comandos de arranque.
+- `render.yaml` define el servicio Python, base PostgreSQL administrada, health check y comandos de arranque.
+- `preDeployCommand` ejecuta `python -m slipform.cloud_init`.
 - `startCommand` ejecuta `python -m slipform.server`.
 - El servidor toma `PORT` y `SLIPFORM_HOST` del entorno cuando existen, preservando `127.0.0.1:8010` para uso local.
-- SQLite en Render es adecuada para una sola instancia. Para multiples instancias o alta concurrencia, la ruta futura es PostgreSQL.
+- En ausencia de `DATABASE_URL`, el servidor usa SQLite local; en Render usa PostgreSQL.
 
 ## Agregar Funcionalidad
 

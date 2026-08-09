@@ -161,7 +161,7 @@ class FrontendContractTests(unittest.TestCase):
             "Se creara un backup SQLite antes de importar",
         ):
             self.assertIn(token, legacy)
-        self.assertIn("seybaplaya-slipform-lite-v17", sw)
+        self.assertIn("seybaplaya-slipform-lite-v18", sw)
 
     def test_report_can_upload_photos_for_control_central(self) -> None:
         index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")

@@ -1,4 +1,4 @@
-const CACHE_NAME = "seybaplaya-slipform-lite-v17";
+const CACHE_NAME = "seybaplaya-slipform-lite-v18";
 const ASSETS = [
   "/",
   "/index.html",

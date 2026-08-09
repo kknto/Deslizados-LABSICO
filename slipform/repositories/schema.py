@@ -9,12 +9,17 @@ from slipform.config import (
     DEFAULT_ADVANCE_CM,
     DEFAULT_ADVANCE_SPEED_CM_H,
 )
+from slipform.repositories.connection import database_engine
+from slipform.repositories.postgres_schema import init_postgres_db
 
 SCHEMA_VERSION = 9
 SCHEMA_DESCRIPTION = "preserve_active_advance_recipes"
 
 
 def init_db(conn: sqlite3.Connection) -> None:
+    if database_engine(conn) == "postgres":
+        init_postgres_db(conn)
+        return
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS schema_migrations (

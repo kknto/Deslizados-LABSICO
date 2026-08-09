@@ -7,8 +7,8 @@ Proyecto funcional: version Lite local Windows para control de deslizamiento en 
 ## Despliegue Web Preparado
 
 - Blueprint: `render.yaml`.
-- Inicializador: `python -m slipform.cloud_init`, ejecutado por el servidor al arrancar.
-- SQLite cloud: `SLIPFORM_DB_PATH=/var/data/slipform.sqlite`.
+- Inicializador: `python -m slipform.cloud_init`, ejecutado como `preDeployCommand`.
+- Base cloud: PostgreSQL administrado con `DATABASE_URL`.
 - Health check: `/api/health`.
 - No se versionan bases SQLite, respaldos ni evidencias reales.
 

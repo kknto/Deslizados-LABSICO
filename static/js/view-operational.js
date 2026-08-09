@@ -66,7 +66,7 @@ window.SlipformOperationalView = (() => {
     if (!health) {
       summary.innerHTML = `
         <div><span>Servidor</span><strong>Sin conexion</strong></div>
-        <div><span>SQLite</span><strong>--</strong></div>
+        <div><span>Base de datos</span><strong>--</strong></div>
         <div><span>Schema</span><strong>--</strong></div>
         <div><span>Cache</span><strong>--</strong></div>
       `;
@@ -76,11 +76,13 @@ window.SlipformOperationalView = (() => {
       return;
     }
     const sqlite = health.sqlite || {};
+    const database = health.database || {};
+    const engine = database.engine || sqlite.engine || "sqlite";
     const schema = sqlite.schema || {};
     const frontend = health.frontend || {};
     summary.innerHTML = `
       <div><span>Servidor</span><strong>${health.ok ? "OK" : "ERROR"}</strong></div>
-      <div><span>SQLite</span><strong>${formatBytes(sqlite.bytes || 0)}</strong></div>
+      <div><span>Base de datos</span><strong>${escapeHtml(engine === "postgres" ? "PostgreSQL" : formatBytes(sqlite.bytes || 0))}</strong></div>
       <div><span>Schema</span><strong>v${escapeHtml(schema.version || 0)}</strong></div>
       <div><span>Cache</span><strong>${escapeHtml(frontend.service_worker || "--")}</strong></div>
     `;
@@ -94,7 +96,7 @@ window.SlipformOperationalView = (() => {
       .catch(() => {
         if (auditTable) auditTable.innerHTML = `<tr><td colspan="6">Sin informacion de auditoria.</td></tr>`;
       });
-    counts.innerHTML = Object.entries(sqlite.counts || {})
+    counts.innerHTML = Object.entries((database.counts || sqlite.counts) || {})
       .map(([key, value]) => `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`)
       .join("");
   }
