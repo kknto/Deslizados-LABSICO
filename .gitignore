@@ -18,6 +18,7 @@ data/*.sqlite
 data/*.sqlite-*
 data/backups/
 Bitacora_escrita/
+LOGO/
 
 # Artefactos generados
 dist/

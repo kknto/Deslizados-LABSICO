@@ -9,6 +9,7 @@ test.describe("Lite simplificado", () => {
     page.on("pageerror", (error) => consoleErrors.push(error.message));
     page.consoleErrors = consoleErrors;
     await page.goto("/", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Entrar al sistema" }).click();
   });
 
   test.afterEach(async ({ page }) => {

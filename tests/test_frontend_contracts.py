@@ -67,6 +67,23 @@ class FrontendContractTests(unittest.TestCase):
         self.assertFalse((ROOT / "static" / "js" / "view-scada.js").exists())
         self.assertFalse((ROOT / "static" / "js" / "view-trends.js").exists())
 
+    def test_landing_page_uses_labsico_logo_before_app_shell(self) -> None:
+        index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+        main = (ROOT / "static" / "js" / "main.js").read_text(encoding="utf-8")
+        sw = (ROOT / "static" / "sw.js").read_text(encoding="utf-8")
+
+        for token in (
+            'id="landing-screen"',
+            'class="landing-logo"',
+            'src="/assets/labsico-logo.jpg"',
+            'id="landing-enter"',
+            "Entrar al sistema",
+        ):
+            self.assertIn(token, index)
+        self.assertIn("function initLanding()", main)
+        self.assertIn('document.body.classList.remove("landing-active")', main)
+        self.assertIn("/assets/labsico-logo.jpg", sw)
+
     def test_operator_has_guided_operation_and_fast_checklist(self) -> None:
         index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
         legacy = (ROOT / "static" / "js" / "legacy-app.js").read_text(encoding="utf-8")
@@ -161,7 +178,7 @@ class FrontendContractTests(unittest.TestCase):
             "Se creara un backup SQLite antes de importar",
         ):
             self.assertIn(token, legacy)
-        self.assertIn("seybaplaya-slipform-lite-v18", sw)
+        self.assertIn("seybaplaya-slipform-lite-v19", sw)
 
     def test_report_can_upload_photos_for_control_central(self) -> None:
         index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")

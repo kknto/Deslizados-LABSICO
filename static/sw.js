@@ -1,7 +1,8 @@
-const CACHE_NAME = "seybaplaya-slipform-lite-v18";
+const CACHE_NAME = "seybaplaya-slipform-lite-v19";
 const ASSETS = [
   "/",
   "/index.html",
+  "/assets/labsico-logo.jpg",
   "/css/main.css",
   "/css/base.css",
   "/css/scada.css",

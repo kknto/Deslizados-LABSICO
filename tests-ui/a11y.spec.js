@@ -8,9 +8,16 @@ async function scan(page) {
     .analyze();
 }
 
+test("Landing LABSICO no tiene violaciones WCAG A/AA criticas", async ({ page }) => {
+  await page.goto("/", { waitUntil: "networkidle" });
+  const results = await scan(page);
+  expect(results.violations).toEqual([]);
+});
+
 for (const tabName of ["Operador", "Captura", "Programa", "Bitacora", "Reporte"]) {
   test(`${tabName} no tiene violaciones WCAG A/AA criticas`, async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Entrar al sistema" }).click();
     await page.getByRole("tab", { name: tabName }).click();
     const results = await scan(page);
     expect(results.violations).toEqual([]);

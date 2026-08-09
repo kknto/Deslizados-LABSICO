@@ -9,6 +9,22 @@ function loadScript(src) {
   });
 }
 
+function initLanding() {
+  const landing = document.getElementById("landing-screen");
+  const enterButton = document.getElementById("landing-enter");
+  const mainContent = document.getElementById("main-content");
+  if (!landing || !enterButton || !mainContent) return;
+
+  enterButton.addEventListener("click", () => {
+    landing.hidden = true;
+    document.body.classList.remove("landing-active");
+    mainContent.removeAttribute("inert");
+    mainContent.focus({ preventScroll: true });
+  });
+}
+
+initLanding();
+
 loadScript("/js/app-state.js")
   .then(() => loadScript("/js/app-utils.js"))
   .then(() => loadScript("/js/app-charts.js"))

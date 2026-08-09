@@ -8,9 +8,18 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="stylesheet" href="/css/main.css" />
   </head>
-  <body>
+  <body class="landing-active">
+    <section id="landing-screen" class="landing-screen" aria-labelledby="landing-title">
+      <div class="landing-panel">
+        <img class="landing-logo" src="/assets/labsico-logo.jpg" alt="LABSICO" />
+        <p class="landing-eyebrow">Control de deslizamiento</p>
+        <h1 id="landing-title">Seybaplaya</h1>
+        <p class="landing-copy">Sistema operativo para seguimiento, bitacora y reporte de colado.</p>
+        <button id="landing-enter" class="landing-enter-btn" type="button">Entrar al sistema</button>
+      </div>
+    </section>
     <a class="skip-link" href="#tab-operador">Saltar a Operador</a>
-    <main id="main-content" class="shell">
+    <main id="main-content" class="shell" tabindex="-1" inert>
       <section class="topbar">
         <div>
           <h1>Control De Deslizamiento</h1>
