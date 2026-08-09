@@ -31,6 +31,8 @@ from slipform.reports.csv_export import rows_to_csv
 from slipform.reports.rendering import escape_html, svg_line_chart
 
 HttpBytesResponse = tuple[int, dict[str, str], bytes]
+ROOT = Path(__file__).resolve().parents[2]
+LABSICO_LOGO_PATH = ROOT / "static" / "assets" / "labsico-logo.jpg"
 
 
 def handle_report_get(path: str, query: str, db_path: Path) -> HttpBytesResponse | None:
@@ -214,6 +216,7 @@ def render_control_report(context: dict[str, Any]) -> str:
     desplomes = context["desplomes"]
     mold_state = context["mold_state"] or {}
     target_speed = float(summary.get("ritmo_programado_cm_h") or 30)
+    labsico_logo = _labsico_logo_markup()
 
     turno_rows = _rows(
         turnos,
@@ -261,8 +264,10 @@ def render_control_report(context: dict[str, Any]) -> str:
   <style>
     body {{ font-family: Arial, sans-serif; margin: 18px; color: #172026; }}
     .sheet {{ border: 1px solid #737373; padding: 14px; }}
-    header {{ display: grid; grid-template-columns: 160px 1fr 160px; align-items: center; gap: 16px; text-align: center; }}
-    .logo {{ border: 1px solid #cbd5db; min-height: 64px; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 700; }}
+    header {{ display: grid; grid-template-columns: 150px 1fr 150px; align-items: center; gap: 16px; text-align: center; }}
+    .logo {{ min-height: 58px; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 700; }}
+    .brand-logo img {{ max-width: 126px; max-height: 44px; object-fit: contain; opacity: 0.92; }}
+    .text-logo {{ border: 1px solid #cbd5db; padding: 6px; font-size: 11px; line-height: 1.2; }}
     .bar {{ background: #0ea5e9; color: #fff; text-align: center; font-weight: 700; padding: 6px; margin: 12px 0; }}
     .summary {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 12px; }}
     .box {{ border: 1px solid #cbd5db; padding: 8px; min-height: 54px; }}
@@ -303,13 +308,13 @@ def render_control_report(context: dict[str, Any]) -> str:
   <button class="print" onclick="window.print()">Imprimir / Guardar PDF</button>
   <section class="sheet">
     <header>
-      <div class="logo">{esc(project.get('logo_izquierdo') or 'LOGO')}</div>
+      <div class="logo brand-logo">{labsico_logo}</div>
       <div>
         <strong>CLIENTE: {esc(project.get('cliente'))}</strong><br>
         <strong>EDIFICIO: {esc(project.get('elemento') or project.get('obra'))}</strong><br>
         <strong>UBICACION: {esc(project.get('ubicacion'))}</strong>
       </div>
-      <div class="logo">{esc(project.get('logo_derecho') or 'LOGO')}</div>
+      <div class="logo text-logo">{esc(project.get('logo_derecho') or project.get('logo_izquierdo') or 'Control de deslizado')}</div>
     </header>
     <div class="bar">CONTROL CENTRAL DE DESLIZADO</div>
     <div class="summary">
@@ -368,6 +373,13 @@ def render_control_report(context: dict[str, Any]) -> str:
   </section>
 </body>
 </html>"""
+
+
+def _labsico_logo_markup() -> str:
+    if not LABSICO_LOGO_PATH.exists():
+        return "LABSICO"
+    encoded = base64.b64encode(LABSICO_LOGO_PATH.read_bytes()).decode("ascii")
+    return f'<img src="data:image/jpeg;base64,{encoded}" alt="LABSICO" />'
 
 
 def _operational_conclusion(context: dict[str, Any]) -> dict[str, Any]:

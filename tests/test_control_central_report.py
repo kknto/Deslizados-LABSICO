@@ -88,6 +88,20 @@ class ControlCentralReportTests(unittest.TestCase):
         self.assertIn("Control con observaciones", html)
         self.assertIn("Faltan lecturas de temperatura", html)
 
+    def test_control_report_includes_discreet_labsico_logo(self) -> None:
+        colado_id = create_colado(
+            self.conn,
+            {"silo_id": "S1", "mezcla_id": 1, "hora_colocacion_en_molde": "2026-07-24T09:00"},
+        )
+
+        context = build_control_report_context(self.conn, colado_id)
+        html = render_control_report(context)
+
+        self.assertIn("brand-logo", html)
+        self.assertIn('alt="LABSICO"', html)
+        self.assertIn("max-height: 44px", html)
+        self.assertIn("max-width: 126px", html)
+
     def test_control_report_includes_colado_closure_state(self) -> None:
         colado_id = create_colado(
             self.conn,
