@@ -191,6 +191,92 @@ class ControlCentralReportTests(unittest.TestCase):
         self.assertIn("Evidencia 9", html)
         self.assertNotIn("Fotografias Actualizadas", html)
 
+    def test_printable_colado_report_includes_control_summary(self) -> None:
+        colado_id = create_colado(
+            self.conn,
+            {"silo_id": "S1", "mezcla_id": 1, "hora_colocacion_en_molde": "2026-07-24T09:00"},
+        )
+        insert_mold_advance(
+            self.conn,
+            {
+                "colado_id": colado_id,
+                "fecha_hora": "2026-07-24T10:00",
+                "minuto_transcurrido": 60,
+                "avance_cm": 3,
+                "avance_acumulado_cm": 3,
+                "asegurar_continuidad": False,
+            },
+        )
+        context = build_control_report_context(self.conn, colado_id)
+
+        html = render_colado_report(
+            context["colado"],
+            context["readings"],
+            context["events"],
+            {"estado": "SIN_DATOS", "avance": 0},
+            context["zones"],
+            context["advances"],
+            context["mold_state"],
+            context["alarms"],
+            context["decisions"],
+            context,
+        )
+
+        for token in (
+            "Resumen Operativo De Deslizado",
+            "Altura visible",
+            "Ritmo programado",
+            "Estado molde",
+            "Avance Real Vs Programado",
+            "Avance Por Turno",
+        ):
+            self.assertIn(token, html)
+        self.assertNotIn("orange", html.lower())
+
+    def test_printable_colado_report_uses_historical_control_turns_and_chart(self) -> None:
+        colado_id = create_colado(
+            self.conn,
+            {"silo_id": "S1", "mezcla_id": 1, "hora_colocacion_en_molde": "2026-08-07T22:57"},
+        )
+        for index, when in enumerate(
+            [
+                "2026-08-05T02:30",
+                "2026-08-05T02:44",
+                "2026-08-06T00:07",
+            ],
+            start=1,
+        ):
+            insert_mold_advance(
+                self.conn,
+                {
+                    "colado_id": colado_id,
+                    "fecha_hora": when,
+                    "minuto_transcurrido": (index - 1) * 14,
+                    "avance_cm": 3,
+                    "avance_acumulado_cm": index * 3,
+                    "asegurar_continuidad": False,
+                },
+            )
+        context = build_control_report_context(self.conn, colado_id)
+
+        html = render_colado_report(
+            context["colado"],
+            context["readings"],
+            context["events"],
+            {"estado": "SIN_DATOS", "avance": 0},
+            context["zones"],
+            context["advances"],
+            context["mold_state"],
+            context["alarms"],
+            context["decisions"],
+            context,
+        )
+
+        self.assertIn("Historico 2026-08-05", html)
+        self.assertIn("Historico 2026-08-06", html)
+        self.assertIn("2026-08-05T02:30", html)
+        self.assertIn("Grafica de avance", html)
+
     def test_printable_colado_report_shows_event_date_not_elapsed_minute(self) -> None:
         colado_id = create_colado(
             self.conn,

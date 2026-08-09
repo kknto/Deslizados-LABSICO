@@ -109,6 +109,7 @@ def _headers(content_type: str, filename: str | None, body: bytes) -> dict[str, 
 
 def _colado_report_response(db_path: Path, colado_id: int) -> HttpBytesResponse:
     with connect(db_path) as conn:
+        init_db(conn)
         colado = get_colado(conn, colado_id)
         if not colado:
             return _not_found()
@@ -121,8 +122,20 @@ def _colado_report_response(db_path: Path, colado_id: int) -> HttpBytesResponse:
         mold_state = calculate_mold_state(conn, colado_id) if zones else None
         reference = get_reference_points(conn, colado.get("curva_id"))
         prediction = calculate_state(readings, colado.get("parametros"), reference)
+        control_context = build_control_report_context(conn, colado_id)
     return _html_response(
-        render_colado_report(colado, readings, events, prediction, zones, advances, mold_state, alarms, decisions)
+        render_colado_report(
+            colado,
+            readings,
+            events,
+            prediction,
+            zones,
+            advances,
+            mold_state,
+            alarms,
+            decisions,
+            control_context,
+        )
     )
 
 
@@ -423,6 +436,64 @@ def _operational_conclusion(context: dict[str, Any]) -> dict[str, Any]:
     return {"tone": "ok", "title": "Control documentado sin alertas criticas activas", "items": items}
 
 
+def _printable_control_summary(context: dict[str, Any] | None) -> str:
+    if not context or not context.get("colado"):
+        return ""
+    esc = escape_html
+    colado = context["colado"]
+    summary = context.get("resumen") or {}
+    advances = context.get("advances") or []
+    turnos = context.get("turnos") or []
+    mold_state = context.get("mold_state") or {}
+    window = mold_state.get("ventana_molde") or {}
+    target_speed = float(summary.get("ritmo_programado_cm_h") or 30)
+    chart = svg_line_chart(advances, "minuto_transcurrido", "avance_acumulado_cm", target_speed)
+    turno_rows = _rows(
+        turnos,
+        lambda t: [
+            t.get("turno"),
+            t.get("inicio_turno"),
+            t.get("fin_turno"),
+            t.get("operador"),
+            t.get("avance_parcial_m"),
+            t.get("avance_acumulado_m"),
+            t.get("ritmo_cm_h"),
+            t.get("observaciones"),
+        ],
+    )
+    window_label = ""
+    if window.get("base_cm") is not None or window.get("corona_cm") is not None:
+        window_label = f"{window.get('base_cm')}-{window.get('corona_cm')} cm"
+    return f"""
+  <section class="control-summary">
+    <h2>Resumen Operativo De Deslizado</h2>
+    <div class="control-grid">
+      <div class="control-box"><b>Colado</b>#{esc(colado.get('id'))} {esc(colado.get('silo_id'))}</div>
+      <div class="control-box"><b>Altura visible</b>{esc(summary.get('altura_visible_m') or summary.get('altura_total_deslizada_m'))} m</div>
+      <div class="control-box"><b>Ritmo real</b>{esc(summary.get('ritmo_real_cm_h'))} cm/h</div>
+      <div class="control-box"><b>Ritmo programado</b>{esc(summary.get('ritmo_programado_cm_h'))} cm/h</div>
+      <div class="control-box"><b>Inicio operativo</b>{esc(summary.get('periodo_inicio') or colado.get('fecha_hora_inicio'))}</div>
+      <div class="control-box"><b>Estado colado</b>{esc(summary.get('estado_colado') or colado.get('estado'))}</div>
+      <div class="control-box"><b>Fecha cierre</b>{esc(summary.get('fecha_cierre') or colado.get('fecha_cierre') or 'Abierto')}</div>
+      <div class="control-box"><b>Duracion real</b>{esc(summary.get('duracion_real_dias'))} dias</div>
+      <div class="control-box"><b>Estado molde</b>{esc(mold_state.get('estado_operativo'))}</div>
+      <div class="control-box"><b>Ventana molde</b>{esc(window_label)}</div>
+      <div class="control-box"><b>Alarmas</b>{esc(summary.get('alarmas'))}</div>
+      <div class="control-box"><b>Desplomes fuera</b>{esc(summary.get('desplomes_fuera_tolerancia'))}</div>
+    </div>
+    <div class="control-layout">
+      <section>
+        <h3>Avance Real Vs Programado</h3>
+        {chart}
+      </section>
+      <section>
+        <h3>Avance Por Turno</h3>
+        <table class="compact-table"><thead><tr><th>Turno</th><th>Inicio</th><th>Fin</th><th>Operador</th><th>Parcial m</th><th>Acum. m</th><th>cm/h</th><th>Obs.</th></tr></thead><tbody>{turno_rows}</tbody></table>
+      </section>
+    </div>
+  </section>"""
+
+
 def render_colado_report(
     colado: dict[str, Any],
     readings: list[dict[str, Any]],
@@ -433,6 +504,7 @@ def render_colado_report(
     mold_state: dict[str, Any] | None = None,
     alarms: list[dict[str, Any]] | None = None,
     decisions: list[dict[str, Any]] | None = None,
+    control_context: dict[str, Any] | None = None,
 ) -> str:
     esc = escape_html
     reading_rows = _rows(readings, lambda r: [r.get("minuto_transcurrido"), r.get("temperatura_concreto_c"), r.get("temperatura_ambiente_c"), r.get("humedad_relativa_pct"), r.get("origen")])
@@ -466,6 +538,7 @@ def render_colado_report(
     <div class="box"><b>Siguiente avance</b><br>{esc(next_move.get('avance_cm'))} cm</div>
   </div>"""
     avance_pct = round(float(prediction.get("avance") or 0) * 100, 1)
+    printable_control_summary = _printable_control_summary(control_context)
     return f"""<!doctype html>
 <html lang="es">
 <head>
@@ -474,12 +547,21 @@ def render_colado_report(
   <style>
     body {{ font-family: Arial, sans-serif; margin: 24px; color: #172026; }}
     h1, h2 {{ margin-bottom: 8px; }}
+    h3 {{ margin: 10px 0 6px; font-size: 14px; }}
     .summary {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }}
     .box {{ border: 1px solid #ccd4d8; padding: 10px; border-radius: 6px; }}
+    .control-summary {{ border: 1px solid #cbd5db; padding: 12px; margin: 16px 0 18px; background: #fbfcfd; }}
+    .control-summary h2 {{ margin-top: 0; }}
+    .control-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 12px; }}
+    .control-box {{ border: 1px solid #cbd5db; border-radius: 4px; padding: 8px; min-height: 50px; background: #fff; }}
+    .control-box b {{ display: block; color: #475569; font-size: 11px; text-transform: uppercase; }}
+    .control-layout {{ display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; align-items: start; }}
+    .control-layout svg {{ width: 100%; border: 1px solid #d6dde1; }}
+    .compact-table {{ font-size: 11px; }}
     table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
     th, td {{ border-bottom: 1px solid #d6dde1; padding: 7px; text-align: left; }}
     th {{ color: #5c6b73; }}
-    @media print {{ button {{ display: none; }} }}
+    @media print {{ button {{ display: none; }} .control-layout {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
 <body>
@@ -492,6 +574,7 @@ def render_colado_report(
     <div class="box"><b>Temp. actual</b><br>{esc(prediction.get('temperatura_actual_concreto_c'))} C</div>
     <div class="box"><b>Min. restantes</b><br>{esc(prediction.get('minutos_estimados_restantes'))}</div>
   </div>
+  {printable_control_summary}
   {mold_summary}
   <h2>Zonas Del Molde</h2>
   <table><thead><tr><th>Zona</th><th>Elevacion cm</th><th>Olla</th><th>m3</th><th>Salida planta</th><th>Inicio descarga</th><th>Origen</th><th>Avance generador</th><th>Estado</th></tr></thead><tbody>{zone_rows}</tbody></table>
