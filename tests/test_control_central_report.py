@@ -236,6 +236,9 @@ class ControlCentralReportTests(unittest.TestCase):
             "Estado molde",
             "Avance Real Vs Programado",
             "Avance Por Turno",
+            "printable-header",
+            "printable-logo",
+            "LABSICO",
         ):
             self.assertIn(token, html)
         header = html.split("Resumen Operativo De Deslizado", 1)[0]

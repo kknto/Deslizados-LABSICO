@@ -737,6 +737,7 @@ def render_colado_report(
     advance_rows = _rows(advances or [], lambda a: [a.get("fecha_hora"), a.get("avance_cm"), a.get("intervalo_minutos"), a.get("avance_acumulado_cm"), a.get("velocidad_real_cm_h"), a.get("receta_avance_id"), a.get("operador")])
     alarm_rows = _rows(alarms or [], lambda a: [a.get("fecha_hora_inicio"), a.get("tipo"), a.get("severidad"), a.get("estado"), a.get("mensaje"), a.get("operador_reconoce")])
     decision_rows = _rows(decisions or [], lambda d: [d.get("fecha_hora"), d.get("recomendacion_sistema"), d.get("decision_operador"), d.get("conforme_recomendacion"), d.get("operador"), d.get("supervisor"), d.get("observacion")])
+    labsico_logo = _labsico_logo_markup()
     mold_summary = ""
     if mold_state:
         next_move = mold_state.get("siguiente_avance_5min") or {}
@@ -760,6 +761,10 @@ def render_colado_report(
     body {{ font-family: Arial, sans-serif; margin: 24px; color: #172026; }}
     h1, h2 {{ margin-bottom: 8px; }}
     h3 {{ margin: 10px 0 6px; font-size: 14px; }}
+    .printable-header {{ display: grid; grid-template-columns: 1fr 132px; gap: 18px; align-items: start; margin: 8px 0 14px; }}
+    .printable-header h1 {{ margin: 0 0 6px; }}
+    .printable-logo {{ min-height: 54px; display: flex; align-items: flex-start; justify-content: flex-end; color: #64748b; font-size: 11px; font-weight: 700; }}
+    .printable-logo img {{ max-width: 118px; max-height: 46px; object-fit: contain; opacity: 0.92; }}
     .report-meta {{ margin: 4px 0 14px; color: #334155; font-size: 15px; }}
     .summary {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }}
     .operational-summary {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }}
@@ -781,8 +786,13 @@ def render_colado_report(
 </head>
 <body>
   <button onclick="window.print()">Imprimir / Guardar PDF</button>
-  <h1>Reporte De Colado #{esc(colado.get('id'))}</h1>
-  <p class="report-meta">{esc(status_line)}</p>
+  <header class="printable-header">
+    <div>
+      <h1>Reporte De Colado #{esc(colado.get('id'))}</h1>
+      <p class="report-meta">{esc(status_line)}</p>
+    </div>
+    <div class="printable-logo">{labsico_logo}</div>
+  </header>
   {operational_summary}
   {printable_control_summary}
   {mold_summary}
