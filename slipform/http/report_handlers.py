@@ -221,7 +221,7 @@ def _get_zone_temperature_readings(conn, colado_id: int) -> list[dict[str, Any]]
             SELECT
                 lz.id,
                 z.zona_numero,
-                COALESCE(d.numero_olla, z.zona_numero) AS numero_olla,
+                COALESCE(d.numero_olla, CAST(z.zona_numero AS TEXT)) AS numero_olla,
                 COALESCE(d.hora_salida_planta, z.hora_salida_planta, z.hora_referencia_madurez) AS hora_salida_planta,
                 lz.fecha_hora,
                 lz.minuto_desde_zona,
