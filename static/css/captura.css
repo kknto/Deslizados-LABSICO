@@ -545,6 +545,11 @@
   border-left: 4px solid var(--primary);
 }
 
+#capture-zone-reading-warning,
+#capture-zone-reading-history {
+  grid-column: 1 / -1;
+}
+
 .capture-reading button,
 .capture-zone-reading button,
 .capture-advance button {

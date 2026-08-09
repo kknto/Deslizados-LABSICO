@@ -2764,15 +2764,42 @@ $("#lectura-form")?.addEventListener("submit", async (event) => {
 $("#zone-reading-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.activeColadoId) return alert("Selecciona o crea un colado.");
+  if (isColadoClosed()) return alert("El colado esta finalizado. Reabre el colado antes de registrar lecturas.");
   const payload = Object.fromEntries(new FormData(event.target).entries());
   if (!payload.zona_colado_id) return alert("Selecciona una zona.");
   payload.fecha_hora = payload.fecha_hora || state.evaluationTime || formatDatetimeLocal(new Date());
+  payload.colado_id = state.activeColadoId;
+  const correctedReadingId = event.target.dataset.correctReadingId || "";
+  const selectedZoneText = $("#zone-reading-select")?.selectedOptions?.[0]?.textContent || "zona seleccionada";
   try {
-    await api("/api/lecturas-zona", { method: "POST", body: JSON.stringify(payload) });
+    const created = await api("/api/lecturas-zona", { method: "POST", body: JSON.stringify(payload) });
+    if (correctedReadingId) {
+      await api("/api/lecturas-zona/anular", {
+        method: "POST",
+        body: JSON.stringify({
+          colado_id: state.activeColadoId,
+          lectura_id: correctedReadingId,
+          motivo: `Correccion de lectura de temperatura desde Captura. Reemplazada por lectura ${created.id}.`,
+          operador: activeColado()?.operador || "",
+        }),
+      });
+    }
+    const selectedZone = payload.zona_colado_id;
     event.target.reset();
+    event.target.elements.zona_colado_id.value = selectedZone;
+    delete event.target.dataset.correctReadingId;
+    const warning = $("#capture-zone-reading-warning");
+    if (warning) {
+      warning.hidden = true;
+      warning.textContent = "";
+    }
+    const submit = $("#zone-reading-submit");
+    if (submit) submit.textContent = "Guardar Lectura Zona";
     await refreshMoldState();
     await refreshScadaState();
     await refreshTrends();
+    await refreshCaptureZoneTemperatureHistory();
+    showAppNotice(correctedReadingId ? `Correccion guardada para ${selectedZoneText}.` : `Lectura guardada para ${selectedZoneText}.`, "ok");
   } catch (error) {
     if (error.status) {
       alert("No se pudo guardar la lectura de zona: " + error.message);
@@ -2781,6 +2808,19 @@ $("#zone-reading-form")?.addEventListener("submit", async (event) => {
       alert("Sin conexion: la lectura de zona quedo pendiente de sincronizar.");
     }
   }
+});
+
+$("#zone-reading-select")?.addEventListener("change", () => {
+  const form = $("#zone-reading-form");
+  if (form) delete form.dataset.correctReadingId;
+  const warning = $("#capture-zone-reading-warning");
+  if (warning) {
+    warning.hidden = true;
+    warning.textContent = "";
+  }
+  const submit = $("#zone-reading-submit");
+  if (submit) submit.textContent = "Guardar Lectura Zona";
+  refreshCaptureZoneTemperatureHistory();
 });
 
 $("#evento-form")?.addEventListener("submit", async (event) => {
@@ -3889,19 +3929,55 @@ async function refreshZoneTemperatureHistory(zone, target) {
 function loadZoneTemperatureCorrection(reading, zone, target) {
   const form = target?.closest("form");
   if (!reading || !form) return;
+  const isCapture = form.id === "zone-reading-form";
+  const confirm = isCapture ? $("#zone-reading-submit") : $("#zone-temperature-confirm");
+  const warning = isCapture ? $("#capture-zone-reading-warning") : $("#zone-temperature-warning");
   form.dataset.correctReadingId = String(reading.id);
   form.elements.fecha_hora.value = toDatetimeLocalValue(reading.fecha_hora) || formatDatetimeLocal(new Date());
   form.elements.temperatura_concreto_c.value = reading.temperatura_concreto_c ?? "";
   form.elements.temperatura_ambiente_c.value = reading.temperatura_ambiente_c ?? "";
   form.elements.humedad_relativa_pct.value = reading.humedad_relativa_pct ?? "";
-  const confirm = $("#zone-temperature-confirm");
-  const warning = $("#zone-temperature-warning");
+  if (form.elements.origen) form.elements.origen.value = reading.origen || "manual";
   if (confirm) confirm.textContent = "Guardar correccion";
   if (warning) {
     warning.hidden = false;
     warning.textContent = `Corrigiendo lectura de Zona ${zone.zona_numero}. Al guardar, la lectura anterior quedara anulada con auditoria.`;
   }
   form.elements.temperatura_concreto_c.focus();
+}
+
+function selectedCaptureZone() {
+  const select = $("#zone-reading-select");
+  const zoneId = select?.value || "";
+  if (!zoneId) return null;
+  return (
+    operatorZoneById(zoneId) || {
+      id: zoneId,
+      zona_numero: select?.selectedOptions?.[0]?.textContent?.match(/Zona\s+(\d+)/)?.[1] || zoneId,
+    }
+  );
+}
+
+async function refreshCaptureZoneTemperatureHistory() {
+  const target = $("#capture-zone-temperature-history");
+  if (!target) return;
+  const zone = selectedCaptureZone();
+  const form = $("#zone-reading-form");
+  const warning = $("#capture-zone-reading-warning");
+  const submit = $("#zone-reading-submit");
+  if (form && (!zone || String(form.elements.zona_colado_id.value || "") !== String(zone.id))) {
+    delete form.dataset.correctReadingId;
+  }
+  if (warning && !form?.dataset.correctReadingId) {
+    warning.hidden = true;
+    warning.textContent = "";
+  }
+  if (submit && !form?.dataset.correctReadingId) submit.textContent = "Guardar Lectura Zona";
+  if (!zone?.id) {
+    target.innerHTML = `<div class="zone-temperature-history-empty">Selecciona una zona.</div>`;
+    return;
+  }
+  await refreshZoneTemperatureHistory(zone, target);
 }
 
 async function invalidateZoneTemperatureReading(readingId, zone, target) {
@@ -3945,6 +4021,11 @@ async function invalidateZoneTemperatureReading(readingId, zone, target) {
       }),
     });
     await refreshZoneTemperatureHistory(zone, target);
+    if (target?.id === "capture-zone-temperature-history") {
+      const form = $("#zone-reading-form");
+      if (form?.dataset.correctReadingId === String(readingId)) delete form.dataset.correctReadingId;
+      await refreshCaptureZoneTemperatureHistory();
+    }
     await refreshPrediction();
     await refreshMoldState();
     await refreshScadaState();
@@ -4101,6 +4182,7 @@ async function saveOperatorZoneTemperature(zoneId) {
 
 window.openOperatorZoneTemperatureDialog = openOperatorZoneTemperatureDialog;
 window.saveOperatorZoneTemperature = saveOperatorZoneTemperature;
+window.refreshCaptureZoneTemperatureHistory = refreshCaptureZoneTemperatureHistory;
 
 async function handleOperatorAuthorization() {
   if (!canMarkReadyByFieldCriteria(state.moldState)) {

@@ -102,6 +102,10 @@ class FrontendContractTests(unittest.TestCase):
             "zone-temperature-form",
             "zone-temperature-input",
             "zone-temperature-history",
+            "capture-zone-reading-warning",
+            "capture-zone-reading-history",
+            "capture-zone-temperature-history",
+            "zone-reading-submit",
         ):
             self.assertIn(f'id="{element_id}"', index)
         self.assertIn("function renderOperationalGuidance()", legacy)
@@ -109,7 +113,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("function openOperatorZoneTemperatureDialog", legacy)
         self.assertIn("async function saveOperatorZoneTemperature", legacy)
         self.assertIn("function loadZoneTemperatureCorrection", legacy)
+        self.assertIn("async function refreshCaptureZoneTemperatureHistory", legacy)
         self.assertIn("async function invalidateZoneTemperatureReading", legacy)
+        self.assertIn("Correccion de lectura de temperatura desde Captura", legacy)
         self.assertIn("Guardar correccion", legacy)
         self.assertIn("/api/lecturas-zona", legacy)
         self.assertIn("/api/lecturas-zona/anular", legacy)

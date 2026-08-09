@@ -9,6 +9,7 @@ window.SlipformOperatorView = (() => {
   function renderZoneSelectors(zones) {
     const zoneReading = $("#zone-reading-select");
     if (!zoneReading) return;
+    const previous = zoneReading.value;
     zoneReading.innerHTML =
       zones.length === 0
         ? `<option value="">Registra ollas primero</option>`
@@ -21,6 +22,10 @@ window.SlipformOperatorView = (() => {
                 )}-${format(zone.elevacion_superior_cm, 0)} cm</option>`
             )
             .join("");
+    if (previous && [...zoneReading.options].some((option) => option.value === previous)) {
+      zoneReading.value = previous;
+    }
+    window.refreshCaptureZoneTemperatureHistory?.();
   }
 
   function renderReadings(readings) {
