@@ -1,0 +1,36 @@
+CONTROL DE DESLIZAMIENTO - SEYBAPLAYA
+
+Como abrir el programa
+1. Descomprime el ZIP completo.
+2. Abre la carpeta descomprimida.
+3. Da doble clic en INICIAR_PROGRAMA.bat.
+4. Se abrira el navegador cuando el servidor este listo.
+5. No cierres la ventana negra mientras uses el programa.
+
+No debes ejecutarlo como administrador normalmente.
+Solo usa administrador si Windows o el area de TI lo exige por politica del equipo.
+
+Como cerrar
+- Cierra la ventana negra del programa.
+
+Como guardar un respaldo manual
+1. Cierra el programa si esta abierto.
+2. Da doble clic en RESPALDAR_DATOS.bat.
+3. El respaldo queda en la carpeta data\backups.
+
+Notas importantes
+- El programa funciona localmente en esta computadora.
+- No necesitas internet para operar despues de abrirlo.
+- La informacion se guarda en data\slipform.sqlite.
+- No borres la carpeta data.
+- Si Windows pregunta por permisos de red, permite el acceso en redes privadas.
+- Si el navegador dice "Sin conexion", revisa que la ventana negra siga abierta.
+- Si el puerto 8010 esta ocupado, el programa usara otro puerto disponible y lo mostrara en pantalla.
+- Si la ventana negra muestra un error, el detalle queda en la carpeta logs.
+- Si no abre, ejecuta DIAGNOSTICO.bat y comparte el log mas reciente.
+
+Pantallas recomendadas
+- Operador: uso diario en campo.
+- Captura: crear colado, registrar ollas, lecturas y receta.
+- Programa: cilindros de campo 4h, 5h y 6h.
+- Reporte: reporte final, exportaciones y respaldos.

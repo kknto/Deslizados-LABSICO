@@ -1,0 +1,788 @@
+﻿<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#155e75" />
+    <title>Seybaplaya Slipform</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="/css/main.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#tab-operador">Saltar a Operador</a>
+    <main id="main-content" class="shell">
+      <section class="topbar">
+        <div>
+          <h1>Control De Deslizamiento</h1>
+          <p>Silos Seybaplaya - Molde 1.20 m - Avance 30 cm/h</p>
+        </div>
+        <div class="topbar-status">
+          <div id="connection" class="status-pill" role="status" aria-live="polite">Conectando</div>
+          <div id="active-colado-pill" class="status-pill muted" aria-live="polite">Sin colado</div>
+          <div id="operator-pill" class="status-pill muted" aria-live="polite">Sin operador</div>
+        </div>
+      </section>
+
+      <div id="app-notifications" class="notification-region" role="status" aria-live="assertive" aria-atomic="true"></div>
+
+      <div id="app-dialog" class="app-dialog-backdrop" hidden>
+        <section class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
+          <div class="app-dialog-status" aria-hidden="true"></div>
+          <div class="app-dialog-body">
+            <span id="app-dialog-kicker" class="app-dialog-kicker">Aviso operativo</span>
+            <h2 id="app-dialog-title">Mensaje del sistema</h2>
+            <p id="app-dialog-message"></p>
+            <label id="app-dialog-input-row" class="app-dialog-input-row" hidden>
+              Dato requerido
+              <input id="app-dialog-input" type="text" />
+            </label>
+          </div>
+          <div class="app-dialog-actions">
+            <button id="app-dialog-cancel" type="button" class="secondary">Cancelar</button>
+            <button id="app-dialog-confirm" type="button">Aceptar</button>
+          </div>
+        </section>
+      </div>
+
+      <div id="operator-dialog" class="app-dialog-backdrop operator-dialog-backdrop" hidden>
+        <section class="app-dialog operator-dialog" role="dialog" aria-modal="true" aria-labelledby="operator-dialog-title">
+          <div class="app-dialog-status"></div>
+          <form id="operator-slide-form" class="operator-dialog-form">
+            <div class="app-dialog-body">
+              <span class="app-dialog-kicker">Flujo rapido operador</span>
+              <h2 id="operator-dialog-title">Confirmar deslizado</h2>
+              <p id="operator-dialog-message">Captura temperatura e inspeccion antes de continuar.</p>
+              <div class="operator-dialog-grid">
+                <label>Temperatura concreto C
+                  <input id="operator-temp-input" name="temperatura_concreto_c" type="number" step="0.1" required />
+                </label>
+                <label>Temperatura ambiente C
+                  <input id="operator-ambient-temp-input" name="temperatura_ambiente_c" type="number" step="0.1" placeholder="Opcional" />
+                </label>
+                <label>Humedad relativa %
+                  <input id="operator-humidity-input" name="humedad_relativa_pct" type="number" min="0" max="100" step="0.1" placeholder="Opcional" />
+                </label>
+                <label>Observacion
+                  <input name="observacion" type="text" placeholder="Opcional" />
+                </label>
+                <label id="operator-supervisor-row" hidden>Supervisor / responsable
+                  <input id="operator-supervisor-input" name="supervisor" type="text" placeholder="Obligatorio para autorizacion" />
+                </label>
+              </div>
+              <fieldset class="operator-condition-field">
+                <legend>Condicion observada</legend>
+                <label><input type="radio" name="resultado_fisico" value="correcto" required /> Correcto</label>
+                <label><input type="radio" name="resultado_fisico" value="se_pega" /> Se pega</label>
+                <label><input type="radio" name="resultado_fisico" value="desmorona" /> Desmorona</label>
+                <label><input type="radio" name="resultado_fisico" value="arrastra" /> Arrastra</label>
+                <label><input type="radio" name="resultado_fisico" value="fisura" /> Fisura</label>
+              </fieldset>
+              <fieldset class="operator-checklist-field">
+                <legend>Inspeccion rapida</legend>
+                <label><input name="no_desmorona" type="checkbox" /> No desmorona</label>
+                <label><input name="no_se_pega" type="checkbox" /> No se pega</label>
+                <label><input name="acabado_aceptable" type="checkbox" /> Acabado aceptable</label>
+                <label><input name="sin_arrastre" type="checkbox" /> Sin arrastre</label>
+              </fieldset>
+            </div>
+            <div class="app-dialog-actions">
+              <button id="operator-dialog-cancel" type="button" class="secondary">Cancelar</button>
+              <button id="operator-dialog-confirm" type="submit">Confirmar</button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <div id="zone-temperature-dialog" class="app-dialog-backdrop zone-temperature-dialog-backdrop" hidden>
+        <section class="app-dialog zone-temperature-dialog" role="dialog" aria-modal="true" aria-labelledby="zone-temperature-dialog-title" aria-describedby="zone-temperature-dialog-message">
+          <div class="app-dialog-status"></div>
+          <form id="zone-temperature-form" class="zone-temperature-form">
+            <div class="app-dialog-body">
+              <span class="app-dialog-kicker">Temperatura por zona</span>
+              <h2 id="zone-temperature-dialog-title">Capturar temperatura</h2>
+              <p id="zone-temperature-dialog-message">Guarda una lectura manual para la zona seleccionada.</p>
+              <div id="zone-temperature-summary" class="zone-temperature-summary">Zona: --</div>
+              <p id="zone-temperature-warning" class="zone-temperature-warning" hidden></p>
+              <input name="zona_colado_id" type="hidden" />
+              <div class="operator-dialog-grid">
+                <label>Temperatura concreto C
+                  <input id="zone-temperature-input" name="temperatura_concreto_c" type="number" step="0.1" required />
+                </label>
+                <label>Fecha/hora
+                  <input id="zone-temperature-time-input" name="fecha_hora" type="datetime-local" required />
+                </label>
+                <label>Temperatura ambiente C
+                  <input name="temperatura_ambiente_c" type="number" step="0.1" placeholder="Opcional" />
+                </label>
+                <label>Humedad relativa %
+                  <input name="humedad_relativa_pct" type="number" min="0" max="100" step="0.1" placeholder="Opcional" />
+                </label>
+              </div>
+            </div>
+            <div class="app-dialog-actions">
+              <button id="zone-temperature-cancel" type="button" class="secondary">Cancelar</button>
+              <button id="zone-temperature-confirm" type="submit">Guardar temperatura</button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <nav class="tabs" aria-label="Vistas" role="tablist">
+        <button class="tab-button active" data-tab="operador" type="button">Operador</button>
+        <button class="tab-button" data-tab="captura" type="button">Captura</button>
+        <button class="tab-button" data-tab="programa" type="button">Programa</button>
+        <button class="tab-button" data-tab="bitacora" type="button">Bitacora</button>
+        <button class="tab-button" data-tab="reportes" type="button">Reporte</button>
+      </nav>
+
+      <section id="tab-operador" class="tab-panel active">
+        <section class="operator-shell" aria-label="Vista rapida para operador">
+          <section class="operator-command-bar" aria-label="Resumen operativo">
+            <div>
+              <span>Estado</span>
+              <strong id="operator-command-state">SIN ZONAS</strong>
+            </div>
+            <div>
+              <span>Zona</span>
+              <strong id="operator-command-zone">--</strong>
+            </div>
+            <div>
+              <span>Avance total</span>
+              <strong id="operator-command-advance">0.0 cm</strong>
+            </div>
+            <div>
+              <span>Proxima evaluacion</span>
+              <strong id="operator-command-next">--</strong>
+            </div>
+          </section>
+          <div class="operator-status-card">
+            <span class="operator-kicker">Decision</span>
+            <strong id="operator-status">SIN ZONAS</strong>
+            <p id="operator-message">Selecciona un colado y genera zonas para iniciar.</p>
+          </div>
+          <div class="operator-timer-card">
+            <span class="operator-kicker">Siguiente evaluacion</span>
+            <strong id="operator-timer">Listo</strong>
+            <span id="operator-timer-state" class="operator-timer-state">Listo para primera evaluacion</span>
+            <p id="operator-recipe">Receta: 3.0 cm cada 6 min</p>
+            <div class="operator-time-row">
+              <span id="operator-last-advance-time">Ultimo avance: --</span>
+              <span id="operator-next-time">Siguiente: --</span>
+            </div>
+            <div class="operator-timer-bar" aria-hidden="true"><span id="operator-timer-progress"></span></div>
+          </div>
+          <div class="operator-main-grid">
+            <div class="operator-zone-card">
+              <span class="operator-kicker">Zona a liberar</span>
+              <strong id="operator-zone">--</strong>
+              <p id="operator-zone-load" class="hint">Olla: -- | Salida planta: --</p>
+              <div class="operator-zone-strip">
+                <div><span>Madurez</span><b id="operator-maturity">--%</b></div>
+                <div><span>Temp.</span><b id="operator-temp">-- C</b></div>
+                <div><span>Avance</span><b id="operator-advance">-- cm</b></div>
+              </div>
+              <p id="operator-maturity-eta" class="operator-maturity-eta">Estimacion de madurez: --</p>
+              <p id="operator-field-release-badge" class="operator-field-release-badge" hidden>Lista por criterio de campo.</p>
+              <button id="operator-zone-temp-btn" type="button" class="button-small secondary operator-zone-temp-main" hidden>
+                Capturar temperatura
+              </button>
+            </div>
+            <button id="operator-action-btn" type="button" class="operator-primary-action">Ir a Captura</button>
+            <button id="operator-authorize-btn" type="button" class="operator-secondary-action danger" hidden>
+              Marcar lista por inspeccion
+            </button>
+          </div>
+          <section id="operator-speed-advice" class="operator-speed-advice-card" aria-live="polite">
+            <div>
+              <span class="operator-kicker">Velocidad recomendada</span>
+              <strong id="operator-speed-recommendation">-- cm/h</strong>
+            </div>
+            <div>
+              <span id="operator-speed-action">Sin datos</span>
+              <p id="operator-speed-reason">Registra zonas y temperatura para calcular recomendacion.</p>
+              <p id="operator-speed-suggested" class="operator-speed-suggested">Sugerencia: --</p>
+              <button id="operator-apply-speed-recipe-btn" type="button" class="button-small secondary" hidden>Aplicar sugerencia</button>
+            </div>
+          </section>
+          <section id="operator-schedule-card" class="operator-schedule-card" aria-live="polite">
+            <span class="operator-kicker">Programa por cilindro</span>
+            <strong id="operator-schedule-status">Sin programa</strong>
+            <p id="operator-schedule-summary">Registra el ensayo de cilindro en Programa.</p>
+          </section>
+          <section id="data-quality-panel" class="data-quality-panel ok" aria-live="polite">
+            <span>Sin alertas de datos.</span>
+          </section>
+          <section id="operator-mold-progress" class="operator-mold-progress-card" aria-labelledby="operator-mold-progress-title">
+            <div class="operator-mold-progress-head">
+              <div>
+                <span class="operator-kicker">Progreso del molde</span>
+                <h3 id="operator-mold-progress-title">Avance total acumulado</h3>
+              </div>
+              <strong id="operator-total-advance">0.0 cm</strong>
+            </div>
+            <div class="operator-mold-track-info">
+              <span id="operator-current-segment">Tramo 0-30 cm</span>
+              <span id="operator-segment-remaining">Faltan 30.0 cm</span>
+            </div>
+            <div class="operator-mold-progress-bar" aria-hidden="true">
+              <span id="operator-mold-progress-fill"></span>
+            </div>
+            <div class="operator-mold-progress-grid">
+              <div><span>Ventana</span><b id="operator-mold-window">0.0-120.0 cm</b></div>
+              <div><span>Libera</span><b id="operator-progress-release-zone">--</b></div>
+              <div><span>Llena</span><b id="operator-progress-fill-zone">--</b></div>
+            </div>
+          </section>
+          <section class="operator-data-check-card" aria-labelledby="operator-data-check-title">
+            <div class="operator-zone-status-header">
+              <div>
+                <span class="operator-kicker">Checklist de control</span>
+                <h3 id="operator-data-check-title">Datos para decidir</h3>
+              </div>
+              <span id="operator-data-check-count">--</span>
+            </div>
+            <div id="operator-data-check-list" class="operator-data-check-list">
+              <span>Sin diagnostico de datos.</span>
+            </div>
+          </section>
+          <section class="operator-zone-status-panel" aria-labelledby="operator-zone-status-title">
+            <div class="operator-zone-status-header">
+              <div>
+                <span class="operator-kicker">Estado de zonas</span>
+                <h3 id="operator-zone-status-title">Zonas creadas</h3>
+              </div>
+              <span id="operator-zone-status-hint">Estado operativo de cada zona registrada.</span>
+            </div>
+            <div id="operator-zone-status-list" class="operator-zone-status-list">
+              <div class="operator-zone-status-empty">Sin zonas creadas.</div>
+            </div>
+          </section>
+          <section id="operator-temperature-trend-card" class="operator-live-trend-card" aria-label="Tendencia de temperatura">
+            <span class="operator-kicker">Tendencia temperatura</span>
+            <strong id="operator-temperature-delta">Sin datos reales</strong>
+            <span id="operator-temperature-source">Fuente: --</span>
+            <div id="operator-temperature-trend" class="echart compact" data-chart-height="190px" role="img" aria-label="Tendencia viva de temperatura real contra esperada"></div>
+          </section>
+          <section class="operator-log-card" aria-labelledby="operator-log-title">
+            <div class="operator-zone-status-header">
+              <div>
+                <span class="operator-kicker">Bitacora operativa</span>
+                <h3 id="operator-log-title">Ultima actividad</h3>
+              </div>
+              <a id="operator-log-export-link" class="button-link compact" href="#">Exportar CSV</a>
+            </div>
+            <div id="operator-log-list" class="operator-log-list">
+              <div class="operator-log-empty">Sin actividad registrada.</div>
+            </div>
+          </section>
+          <div id="operator-warning" class="operator-warning" role="status" aria-live="polite">Sin alarmas criticas.</div>
+        </section>
+      </section>
+
+      <section id="tab-captura" class="tab-panel">
+        <section class="capture-readiness">
+          <div id="capture-ready-colado"><span>Colado</span><strong>Pendiente</strong></div>
+          <div id="capture-ready-zones"><span>Zonas</span><strong>Pendiente</strong></div>
+          <div id="capture-ready-recipe"><span>Receta</span><strong>Pendiente</strong></div>
+          <div id="capture-ready-reading"><span>Lectura</span><strong>Pendiente</strong></div>
+        </section>
+        <section class="capture-grid">
+          <form id="colado-form" class="panel capture-panel capture-colado" data-step="1" data-step-label="Colado">
+            <h2>Crear / Editar Colado</h2>
+            <label>Usar Colado Existente<select id="colado-select"></select></label>
+            <label>Silo<input name="silo_id" required placeholder="Silo 1" /></label>
+            <label>Mezcla<select name="mezcla_id" id="mezcla-select" required></select></label>
+            <label>Curva De Referencia<select name="curva_id" id="curva-select"></select></label>
+            <label>Operador<input name="operador" placeholder="Nombre" /></label>
+            <label>Estado<select name="estado"><option value="ACTIVO">Activo</option><option value="CERRADO">Cerrado</option><option value="CANCELADO">Cancelado</option></select></label>
+            <label>Fecha de cierre<input name="fecha_cierre" type="datetime-local" /></label>
+            <label class="check-row"><input name="es_demo" type="checkbox" /> Demo / entrenamiento</label>
+            <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
+            <div class="form-actions">
+              <button type="submit">Crear Nuevo</button>
+              <button type="button" id="update-colado-btn" class="secondary">Guardar Cambios</button>
+              <button type="button" id="delete-colado-btn" class="danger">Eliminar Colado</button>
+            </div>
+          </form>
+
+          <form id="advance-recipe-form" class="panel capture-panel capture-recipe" data-step="5" data-step-label="Receta">
+            <h2>Receta De Avance</h2>
+            <div class="two-col">
+              <label>Avance cm<input name="avance_objetivo_cm" type="number" step="0.1" min="0.1" value="3.0" required /></label>
+              <label>Intervalo min<input name="intervalo_objetivo_min" type="number" step="0.1" min="0.1" value="6.0" required /></label>
+            </div>
+            <div class="two-col">
+              <label>Vel. min cm/h<input name="tolerancia_velocidad_min_cm_h" type="number" step="0.1" value="25" readonly /></label>
+              <label>Vel. max cm/h<input name="tolerancia_velocidad_max_cm_h" type="number" step="0.1" value="35" readonly /></label>
+            </div>
+            <p class="hint">Puedes ajustar avance e intervalo. La tolerancia se calcula automaticamente como velocidad objetivo +/-5 cm/h.</p>
+            <label>Motivo<textarea name="motivo" rows="2" placeholder="Ajuste por criterio de campo"></textarea></label>
+            <div class="two-col">
+              <label>Operador<input name="operador" /></label>
+              <label>Supervisor<input name="supervisor" /></label>
+            </div>
+            <button type="submit">Guardar Receta</button>
+            <p id="advance-recipe-summary" class="hint">Default: 3.0 cm cada 6.0 min = 30.0 cm/h.</p>
+            <div id="advance-recipe-suggestion" class="recipe-suggestion-box" hidden>
+              <span>Sugerencia actual del sistema</span>
+              <strong id="advance-recipe-suggestion-text">--</strong>
+              <small id="advance-recipe-suggestion-compare">--</small>
+              <button id="use-recipe-suggestion-btn" type="button" class="button-small secondary">Ver sugerencia</button>
+            </div>
+          </form>
+
+          <form id="start-offset-form" class="panel capture-panel capture-zone-generator" data-step="2" data-step-label="Arranque">
+            <h2>Inicio Del Colado</h2>
+            <p class="hint">Usalo si el molde ya contiene una o mas capas previas de otro colado.</p>
+            <div class="two-col">
+              <label>Primera zona nueva<input name="primera_zona_nueva" type="number" step="1" min="1" max="999" value="1" required /></label>
+              <label>Zonas previas existentes<input name="zonas_previas_existentes" type="number" value="0" readonly /></label>
+            </div>
+            <label>Hora inicio operativo<input name="hora_inicio_operativo" type="datetime-local" required /></label>
+            <div class="two-col">
+              <label>Operador<input name="operador" /></label>
+              <label>Supervisor<input name="supervisor" placeholder="Obligatorio si hay zona previa" /></label>
+            </div>
+            <label>Motivo<textarea name="motivo" rows="2" placeholder="Arranque con zona previa existente"></textarea></label>
+            <p id="start-offset-summary" class="hint">Arranque normal: la primera olla crea Zona 1.</p>
+            <button type="submit">Inicializar Arranque</button>
+          </form>
+
+          <form id="truck-zone-form" class="panel capture-panel capture-zone-generator primary-capture-step" data-step="3" data-step-label="Olla">
+            <h2>Registrar Olla Actual</h2>
+            <p class="hint">Cada olla crea o actualiza su zona de 30 cm. La madurez inicia desde salida de planta.</p>
+            <div class="two-col">
+              <label>Numero de olla<input name="numero_olla" type="number" step="1" min="1" value="1" required /></label>
+              <label>Volumen m3<input name="volumen_m3" type="number" step="0.1" min="0.1" value="5" /></label>
+            </div>
+            <label>Salida planta<input name="hora_salida_planta" type="datetime-local" required /></label>
+            <div class="two-col">
+              <label>Llegada obra<input name="hora_llegada_obra" type="datetime-local" /></label>
+              <label>Inicio descarga<input name="hora_inicio_descarga" type="datetime-local" /></label>
+            </div>
+            <div class="two-col">
+              <label>Fin descarga<input name="hora_fin_descarga" type="datetime-local" /></label>
+              <label>Temp llegada C<input name="temperatura_llegada_c" type="number" step="0.1" required /></label>
+            </div>
+            <div class="two-col">
+              <label>Revenimiento cm<input name="revenimiento_cm" type="number" step="0.1" /></label>
+              <label>Estado
+                <select name="estado_operativo">
+                  <option value="CONFIRMADA_EN_MOLDE">Confirmada en molde</option>
+                  <option value="EN_DESCARGA">En descarga</option>
+                  <option value="EN_TRANSITO">En transito</option>
+                  <option value="PLANIFICADA">Planificada</option>
+                </select>
+              </label>
+            </div>
+            <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
+            <button type="submit">Registrar Olla / Crear Zona</button>
+          </form>
+
+          <form id="zone-generator-form" class="panel capture-panel capture-zone-generator secondary-capture-step" data-step="Opc." data-step-label="Plan">
+            <h2>Plan De Ollas</h2>
+            <p id="zone-generator-summary" class="hint">Uso secundario para demo o planeacion: crea las ollas faltantes del molde inicial.</p>
+            <label>Salida planta primera olla pendiente<input name="hora_zona_1" type="datetime-local" required /></label>
+            <div class="two-col">
+              <label>Intervalo entre ollas min<input name="intervalo_minutos" type="number" step="1" value="60" /></label>
+              <label>Volumen por olla m3<input name="volumen_por_olla_m3" type="number" step="0.1" value="5" /></label>
+            </div>
+            <div class="two-col">
+              <label>Temp inicial C<input name="temperatura_inicial_c" type="number" step="0.1" /></label>
+              <label>Temp salida C<input name="temperatura_salida_c" type="number" step="0.1" /></label>
+            </div>
+            <label class="check-row">
+              <input name="usar_hora_zona_como_evaluacion" type="checkbox" checked />
+              Usar salida de planta Olla 1 como evaluacion inicial
+            </label>
+            <button id="zone-generator-submit" type="submit" class="secondary">Planificar Ollas Pendientes</button>
+          </form>
+
+          <section class="panel capture-panel capture-truck-loads" data-step="4" data-step-label="Descargas">
+            <div class="section-header">
+              <h2>Ollas / Descargas</h2>
+              <button id="refresh-truck-loads-btn" type="button" class="button-small secondary">Actualizar</button>
+            </div>
+            <p class="hint">Cada olla alimenta una zona de 30 cm. La madurez inicia desde salida de planta.</p>
+            <div class="table-wrap" tabindex="0" aria-label="Tabla editable de ollas registradas">
+              <table class="editable-table">
+                <thead>
+                  <tr>
+                    <th>Olla</th>
+                    <th>Zona</th>
+                    <th>m3</th>
+                    <th>Salida planta</th>
+                    <th>Llegada obra</th>
+                    <th>Inicio descarga</th>
+                    <th>Fin descarga</th>
+                    <th>Temp llegada</th>
+                    <th>Reven.</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody id="truck-loads-table"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <form id="lectura-form" class="panel capture-panel capture-reading" data-step="6" data-step-label="Lectura">
+            <h2>Nueva Lectura</h2>
+            <div class="two-col">
+              <label>Minuto<input name="minuto_transcurrido" type="number" step="0.1" min="0" placeholder="Auto" /></label>
+              <label>Origen<select name="origen"><option value="manual">Manual</option><option value="sensor">Sensor</option><option value="importacion">Importacion</option></select></label>
+            </div>
+            <p class="hint">Si dejas Minuto vacio, se calcula desde la salida de planta de la primera olla.</p>
+            <label>Temp. Concreto C<input name="temperatura_concreto_c" type="number" step="0.1" required /></label>
+            <div class="two-col">
+              <label>Temp. Ambiente C<input name="temperatura_ambiente_c" type="number" step="0.1" /></label>
+              <label>Humedad %<input name="humedad_relativa_pct" type="number" step="0.1" min="0" max="100" /></label>
+            </div>
+            <button type="submit">Guardar Lectura</button>
+            <button type="button" id="sync-btn" class="secondary">Sincronizar Pendientes</button>
+          </form>
+
+          <form id="zone-reading-form" class="panel capture-panel capture-zone-reading secondary-capture-step" data-step="7" data-step-label="Zona">
+            <h2>Lectura Por Zona</h2>
+            <label>Zona<select name="zona_colado_id" id="zone-reading-select"></select></label>
+            <div class="two-col">
+              <label>Origen<select name="origen"><option value="manual">Manual</option><option value="sensor">Sensor</option><option value="importacion">Importacion</option></select></label>
+              <label>Fecha/hora<input name="fecha_hora" type="datetime-local" /></label>
+            </div>
+            <label>Temp. Concreto C<input name="temperatura_concreto_c" type="number" step="0.1" required /></label>
+            <div class="two-col">
+              <label>Temp. Ambiente C<input name="temperatura_ambiente_c" type="number" step="0.1" /></label>
+              <label>Humedad %<input name="humedad_relativa_pct" type="number" step="0.1" min="0" max="100" /></label>
+            </div>
+            <button type="submit">Guardar Lectura Zona</button>
+          </form>
+
+          <form id="advance-form" class="panel capture-panel capture-advance secondary-capture-step" data-step="Manual" data-step-label="Avance">
+            <h2>Avance Del Molde</h2>
+            <div class="two-col">
+              <label>Avance cm<input name="avance_cm" type="number" step="0.1" value="3.0" /></label>
+              <label>Intervalo min<input name="intervalo_minutos" type="number" step="0.1" placeholder="Receta" /></label>
+            </div>
+            <div class="two-col">
+              <label>Fecha/hora<input name="fecha_hora" type="datetime-local" /></label>
+              <label>Velocidad cm/h<input name="velocidad_real_cm_h" type="number" step="0.1" placeholder="Auto" /></label>
+            </div>
+            <label>Operador<input name="operador" /></label>
+            <label>Observacion<textarea name="observacion" rows="2"></textarea></label>
+            <button type="submit">Registrar Avance Manual</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="tab-programa" class="tab-panel">
+        <section class="program-grid">
+          <section class="panel program-panel program-simple-panel">
+            <h2>Evaluar Capa Siguiente</h2>
+            <p class="hint">Registra el resultado del cilindro de campo para la zona indicada.</p>
+            <div class="program-phase-strip" aria-label="Escenarios de cilindro">
+              <div><span>4h</span><strong>Primer criterio</strong></div>
+              <div><span>5h</span><strong>Ajuste intermedio</strong></div>
+              <div><span>6h</span><strong>Limite de campo</strong></div>
+            </div>
+            <div class="program-simple-summary">
+              <div>
+                <span>Zona a evaluar</span>
+                <strong id="program-simple-zone">Zona --</strong>
+              </div>
+              <div>
+                <span>Salida planta</span>
+                <strong id="program-simple-start">--</strong>
+              </div>
+              <div>
+                <span>Espesor</span>
+                <strong id="program-simple-thickness">30 cm</strong>
+              </div>
+              <div>
+                <span>Total capas</span>
+                <strong id="program-simple-total">7</strong>
+              </div>
+            </div>
+            <div id="program-simple-message" class="program-simple-message">Registra una olla para evaluar cilindro.</div>
+            <div class="program-simple-actions">
+              <button id="program-pass-4h-btn" type="button">Pasa a 4h</button>
+              <button id="program-fail-4h-btn" type="button" class="secondary">Falla 4h</button>
+              <button id="program-pass-5h-btn" type="button" hidden>Pasa a 5h</button>
+              <button id="program-fail-5h-btn" type="button" class="secondary" hidden>Falla 5h</button>
+              <button id="program-pass-6h-btn" type="button" hidden>Pasa a 6h</button>
+              <button id="program-fail-6h-btn" type="button" class="danger" hidden>Falla 6h</button>
+              <button id="program-go-capture-btn" type="button" class="secondary" hidden>Ir a Captura</button>
+              <button id="program-next-evaluation-btn" type="button" class="secondary" hidden>Evaluar siguiente zona</button>
+              <button id="program-correct-result-btn" type="button" class="secondary" hidden>Corregir resultado</button>
+            </div>
+            <div class="program-simple-footer">
+              <span id="program-next-load-summary" class="program-next-load-summary">Siguiente olla programada: --</span>
+              <button id="program-change-zone-btn" type="button" class="secondary">Cambiar zona</button>
+            </div>
+          </section>
+
+          <details class="panel program-panel program-advanced-panel">
+            <summary>Avanzado / Correccion manual</summary>
+            <form id="slip-schedule-form" class="program-panel">
+            <h2>Ensayo De Cilindro</h2>
+            <p class="hint">Cada ensayo aplica desde la zona indicada hacia adelante. Las zonas anteriores conservan su programa.</p>
+            <div class="two-col">
+              <label>Salida planta de zona evaluada<input name="t_fabricacion" type="datetime-local" required /></label>
+              <label>Zona inicial<input name="start_zone" type="number" min="1" step="1" value="1" required /></label>
+            </div>
+            <div class="two-col">
+              <label>Espesor capa cm<input name="layer_thickness_cm" type="number" min="1" step="0.1" value="30" required /></label>
+              <label>Total capas<input name="total_layers" type="number" min="1" step="1" value="7" required /></label>
+            </div>
+            <fieldset class="cylinder-result-grid">
+              <legend>Resultado de cilindros</legend>
+              <label>4 horas<select name="resultado_4h"><option value="PENDIENTE">Pendiente</option><option value="PASA">Pasa</option><option value="FALLA">Falla</option></select></label>
+              <label>5 horas<select name="resultado_5h"><option value="PENDIENTE">Pendiente</option><option value="PASA">Pasa</option><option value="FALLA">Falla</option></select></label>
+              <label>6 horas<select name="resultado_6h"><option value="PENDIENTE">Pendiente</option><option value="PASA">Pasa</option><option value="FALLA">Falla</option></select></label>
+            </fieldset>
+            <div class="two-col">
+              <label>Operador<input name="operador" /></label>
+              <label>Supervisor<input name="supervisor" /></label>
+            </div>
+            <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
+            <button type="submit">Guardar Revision De Programa</button>
+            </form>
+          </details>
+
+          <section class="panel program-panel program-status-panel">
+            <h2>Escenario Activo</h2>
+            <div class="program-status-card">
+              <span id="program-scenario">Sin escenario</span>
+              <strong id="program-recipe">--</strong>
+              <p id="program-message">Registra el resultado del cilindro.</p>
+            </div>
+            <button id="program-apply-recipe-btn" type="button" class="secondary" hidden>Aplicar receta sugerida</button>
+          </section>
+
+          <section class="panel program-panel program-history-panel">
+            <div class="section-header">
+              <h2>Historial De Revisiones</h2>
+              <span class="hint">Cada revision ajusta el programa desde su zona inicial.</span>
+            </div>
+            <div id="program-history-list" class="program-history-list"></div>
+          </section>
+
+          <section class="panel program-panel program-table-panel">
+            <div class="section-header">
+              <h2>Horario De Capas / Ollas</h2>
+              <span id="program-table-summary" class="hint">Sin programa activo.</span>
+            </div>
+            <div class="table-wrap" tabindex="0" aria-label="Horario de capas y ollas">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Capa</th>
+                    <th>Zona</th>
+                    <th>Objetivo</th>
+                    <th>Real salida</th>
+                    <th>Escenario</th>
+                    <th>Receta</th>
+                    <th>Desv.</th>
+                    <th>Estado</th>
+                    <th>Origen</th>
+                  </tr>
+                </thead>
+                <tbody id="program-layers-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="tab-bitacora" class="tab-panel">
+        <section class="panel wide written-log-import-panel" aria-labelledby="written-log-title">
+          <div class="section-header">
+            <div>
+              <h2 id="written-log-title">Importar Bitacora Escrita</h2>
+              <span class="hint">Prueba OCR automatico, revisa candidatos y confirma solo si la vista previa es consistente.</span>
+            </div>
+            <button id="written-log-template-btn" type="button" class="secondary">Crear Plantillas CSV</button>
+          </div>
+          <div class="written-log-auto-box">
+            <div>
+              <strong>OCR experimental</strong>
+              <span>Usa las imagenes guardadas en Bitacora_escrita. Si el motor OCR no esta instalado, continua con transcripcion manual.</span>
+            </div>
+            <button id="written-log-auto-btn" type="button">Analizar Imagenes Automaticamente</button>
+          </div>
+          <div id="written-log-ocr-status" class="written-log-status" role="status" aria-live="polite">
+            OCR no ejecutado.
+          </div>
+          <div class="three-col">
+            <label>Fecha base<input id="written-log-base-date" type="date" value="2026-08-04" /></label>
+            <label>Ollas existentes
+              <select id="written-log-mode">
+                <option value="omitir">Omitir existentes</option>
+                <option value="actualizar">Actualizar existentes</option>
+              </select>
+            </label>
+            <label>Operador<input id="written-log-operator" placeholder="Opcional" /></label>
+          </div>
+          <div class="three-col">
+            <label>Primera zona fresca<input id="written-log-first-fresh-zone" type="number" min="1" step="1" value="1" /></label>
+            <label>Avances desde eventos
+              <span class="field-checkbox">
+                <input id="written-log-create-advances" type="checkbox" />
+                <span>Crear avances desde eventos Deslizado</span>
+              </span>
+            </label>
+            <label>Avances existentes
+              <select id="written-log-existing-advances-mode">
+                <option value="bloquear">Bloquear si ya existen avances</option>
+              </select>
+            </label>
+          </div>
+          <div class="two-col">
+            <label>Interpretar Deslizado como
+              <select id="written-log-advance-interpretation">
+                <option value="acumulado_desde_inicio">Avance acumulado desde inicio del deslizado</option>
+              </select>
+            </label>
+            <label>Eventos importados
+              <select id="written-log-events-mode">
+                <option value="bloquear">Bloquear si ya existen eventos</option>
+                <option value="reemplazar_importados">Reemplazar eventos importados</option>
+              </select>
+            </label>
+          </div>
+          <div class="two-col">
+            <label>Regla de avance<input value="El avance visible suma zonas previas + avance importado" readonly /></label>
+            <label>Regla de reimportacion<input value="Solo reemplaza eventos importados; no toca ollas, avances ni fotos" readonly /></label>
+          </div>
+          <div class="two-col">
+            <label>CSV ollas<input id="written-log-ollas-file" type="file" accept=".csv,text/csv" /></label>
+            <label>CSV eventos<input id="written-log-events-file" type="file" accept=".csv,text/csv" /></label>
+          </div>
+          <div id="written-log-status" class="written-log-status" role="status" aria-live="polite">
+            Sin vista previa cargada.
+          </div>
+          <div id="written-log-preview" class="written-log-preview" aria-live="polite"></div>
+          <div class="actions">
+            <button id="written-log-preview-btn" type="button" class="secondary">Vista Previa CSV</button>
+            <button id="written-log-import-btn" type="button" disabled>Confirmar Importacion</button>
+          </div>
+        </section>
+      </section>
+
+      <section id="tab-reportes" class="tab-panel">
+        <section class="grid">
+          <form id="project-form" class="panel wide">
+            <h2>Datos Del Proyecto</h2>
+            <div class="three-col">
+              <label>Nombre<input name="nombre" /></label>
+              <label>Cliente<input name="cliente" /></label>
+              <label>Obra<input name="obra" /></label>
+            </div>
+            <div class="three-col">
+              <label>Ubicacion<input name="ubicacion" /></label>
+              <label>Elemento<input name="elemento" /></label>
+              <label>Contratista<input name="contratista" /></label>
+            </div>
+            <div class="three-col">
+              <label>Supervisor<input name="supervisor" /></label>
+              <label>Logo izq.<input name="logo_izquierdo" placeholder="Texto o nombre" /></label>
+              <label>Logo der.<input name="logo_derecho" placeholder="Texto o nombre" /></label>
+            </div>
+            <div class="three-col">
+              <label>Altura objetivo m<input name="altura_objetivo_m" type="number" step="0.001" /></label>
+              <label>Nivel inicial m<input name="nivel_inicial_m" type="number" step="0.001" /></label>
+              <label>Nivel final m<input name="nivel_final_m" type="number" step="0.001" /></label>
+            </div>
+            <div class="three-col">
+              <label>Volumen m3<input name="volumen_estimado_m3" type="number" step="0.001" /></label>
+              <label>Area cimbra m2<input name="area_cimbra_m2" type="number" step="0.001" /></label>
+              <label>Fin programado<input name="fecha_fin_programada" type="date" /></label>
+            </div>
+            <button type="submit">Guardar Datos Del Proyecto</button>
+          </form>
+          <section class="panel">
+            <h2>Reportes</h2>
+            <div class="report-delivery-checklist" aria-label="Checklist de entrega">
+              <span>Reporte</span>
+              <span>CSV</span>
+              <span>Evidencia</span>
+              <span>Backup</span>
+            </div>
+            <div class="report-preview">
+              <strong>Paquete de entrega</strong>
+              <span>Reporte, CSV, avances, zonas y evidencia operativa del colado activo.</span>
+            </div>
+            <div id="report-data-quality-panel" class="data-quality-panel ok" aria-live="polite">
+              <span>Sin alertas de datos.</span>
+            </div>
+            <div class="actions vertical">
+              <a id="report-link" class="button-link" href="#" target="_blank">Reporte imprimible</a>
+              <a id="central-report-link" class="button-link" href="#" target="_blank">Control Central De Deslizado</a>
+              <a id="central-zip-link" class="button-link" href="#">ZIP evidencia</a>
+              <a id="export-link" class="button-link" href="#">Exportar lecturas</a>
+              <a id="events-export-link-secondary" class="button-link" href="#">Exportar eventos</a>
+              <a id="zones-export-link-secondary" class="button-link" href="#">Exportar zonas</a>
+              <a id="advances-export-link-secondary" class="button-link" href="#">Exportar avances</a>
+              <a id="bitacora-export-link" class="button-link" href="#">Exportar bitacora</a>
+            </div>
+          </section>
+          <form id="report-photo-form" class="panel">
+            <h2>Imagenes Para Reporte</h2>
+            <div class="report-preview">
+              <strong>Evidencia fotografica</strong>
+              <span>Las imagenes se integran al Control Central y al ZIP de evidencia.</span>
+            </div>
+            <label>Imagenes<input name="imagenes" type="file" accept="image/*" multiple required /></label>
+            <div class="two-col">
+              <label>Fecha<input name="fecha_hora" type="datetime-local" /></label>
+              <label>Operador<input name="operador" /></label>
+            </div>
+            <label>Descripcion<input name="descripcion" placeholder="Ej. Vista general, frente norte, detalle de avance" /></label>
+            <button type="submit">Cargar Imagenes</button>
+            <div id="report-photo-status" class="form-status" aria-live="polite"></div>
+          </form>
+          <section class="panel">
+            <h2>Semaforo Simplificado</h2>
+            <div id="state-badge" class="state state-empty">SIN DATOS</div>
+            <div class="metrics">
+              <div><span>Madurez</span><strong id="maturity">0.00 h_eq</strong></div>
+              <div><span>Avance</span><strong id="advance">0%</strong></div>
+              <div><span>Restante</span><strong id="remaining">-- min</strong></div>
+              <div><span>Temp.</span><strong id="latest-temp">-- C</strong></div>
+            </div>
+            <div id="alerts" class="alerts"></div>
+          </section>
+        </section>
+        <section class="panel wide">
+          <h2>Lecturas Recientes</h2>
+          <div class="table-wrap" tabindex="0" aria-label="Lecturas recientes del colado">
+            <table>
+              <thead><tr><th>Min</th><th>Concreto</th><th>Ambiente</th><th>HR</th><th>Origen</th></tr></thead>
+              <tbody id="readings-table"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel wide">
+          <div class="section-header">
+            <h2>Respaldo Y Salud Local</h2>
+            <button id="create-backup-btn" type="button">Crear Backup SQLite</button>
+          </div>
+          <div id="diagnostics-summary" class="diagnostics-summary"></div>
+          <div id="database-counts" class="metrics"></div>
+          <div class="table-wrap" tabindex="0" aria-label="Backups SQLite locales">
+            <table>
+              <thead><tr><th>Fecha</th><th>Archivo</th><th>Tamano</th><th>Ruta</th></tr></thead>
+              <tbody id="backups-table"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel wide">
+          <div class="section-header">
+            <h2>Imagenes Cargadas Al Reporte</h2>
+            <span id="report-photo-count">0 imagenes</span>
+          </div>
+          <div id="report-photos-list" class="photo-grid report-photo-grid" aria-live="polite"></div>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>

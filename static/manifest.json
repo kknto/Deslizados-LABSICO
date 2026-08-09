@@ -1,0 +1,10 @@
+{
+  "name": "Seybaplaya Slipform",
+  "short_name": "Slipform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef2f3",
+  "theme_color": "#155e75",
+  "icons": []
+}
+

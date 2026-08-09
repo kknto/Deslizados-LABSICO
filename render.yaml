@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: deslizados-labsico
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: python -m pip install --upgrade pip
+    preDeployCommand: python -m slipform.cloud_init
+    startCommand: python -m slipform.server
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: SLIPFORM_HOST
+        value: 0.0.0.0
+      - key: SLIPFORM_DB_PATH
+        value: /var/data/slipform.sqlite
+    disk:
+      name: slipform-data
+      mountPath: /var/data
+      sizeGB: 1

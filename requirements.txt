@@ -1,0 +1,2 @@
+# Runtime sin dependencias externas obligatorias.
+# La aplicacion usa Python stdlib, SQLite y archivos estaticos locales.

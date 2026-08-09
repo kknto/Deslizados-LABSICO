@@ -1,0 +1,26 @@
+{
+  "name": "seybaplaya-deslizamiento",
+  "version": "1.0.0",
+  "description": "Lite local Windows para Seybaplaya: SQLite, madurez Arrhenius, operador, captura, programa y reporte.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "python -m slipform.devcheck",
+    "test:ui": "playwright test tests-ui/scada.spec.js",
+    "test:ui:headed": "playwright test --headed",
+    "test:a11y": "playwright test tests-ui/a11y.spec.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.0"
+  },
+  "dependencies": {
+    "echarts": "^6.1.0"
+  }
+}

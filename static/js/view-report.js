@@ -1,0 +1,3 @@
+window.SlipformReportView = (() => {
+  return {};
+})();

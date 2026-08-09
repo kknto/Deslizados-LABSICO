@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / Playwright
+node_modules/
+test-results/
+playwright-report/
+reports/playwright/
+
+# Datos locales y evidencia de obra
+data/*.sqlite
+data/*.sqlite-*
+data/backups/
+Bitacora_escrita/
+
+# Artefactos generados
+dist/
+logs/
+reports/*.csv
+reports/*.html
+reports/*.zip
+
+# Sistema / editor
+.DS_Store
+Thumbs.db

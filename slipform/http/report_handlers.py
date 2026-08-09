@@ -1,0 +1,544 @@
+"""HTTP handlers for exports and printable reports."""
+
+from __future__ import annotations
+
+import zipfile
+import base64
+import binascii
+import re
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs
+
+from slipform.core import calculate_state
+from slipform.db import (
+    connect,
+    get_advances,
+    get_colado,
+    get_events,
+    get_readings,
+    get_reference_points,
+    get_zones,
+    init_db,
+    insert_generated_report,
+    list_operator_decisions,
+    list_operational_alarms,
+)
+from slipform.mold import calculate_mold_state
+from slipform.reports.control_central import build_control_report_context
+from slipform.reports.csv_export import rows_to_csv
+from slipform.reports.rendering import escape_html, svg_line_chart
+
+HttpBytesResponse = tuple[int, dict[str, str], bytes]
+
+
+def handle_report_get(path: str, query: str, db_path: Path) -> HttpBytesResponse | None:
+    params = parse_qs(query)
+
+    if path == "/api/export/lecturas.csv":
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        with connect(db_path) as conn:
+            readings = get_readings(conn, colado_id)
+        return _csv_response(f"lecturas_colado_{colado_id}.csv", rows_to_csv(readings, _READING_COLUMNS))
+
+    if path == "/api/export/eventos.csv":
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        with connect(db_path) as conn:
+            events = get_events(conn, colado_id)
+        return _csv_response(f"eventos_colado_{colado_id}.csv", rows_to_csv(events, _EVENT_COLUMNS))
+
+    if path == "/api/export/zonas.csv":
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        with connect(db_path) as conn:
+            zones = get_zones(conn, colado_id)
+        return _csv_response(f"zonas_colado_{colado_id}.csv", rows_to_csv(zones))
+
+    if path == "/api/export/avances.csv":
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        with connect(db_path) as conn:
+            advances = get_advances(conn, colado_id)
+        return _csv_response(f"avances_colado_{colado_id}.csv", rows_to_csv(advances))
+
+    if path == "/api/export/bitacora.csv":
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        with connect(db_path) as conn:
+            context = build_control_report_context(conn, colado_id)
+        if not context["colado"]:
+            return _not_found()
+        return _csv_response(f"bitacora_colado_{colado_id}.csv", rows_to_csv(context["operational_log"]))
+
+    if path == "/api/report/colado.html":
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        return _colado_report_response(db_path, colado_id)
+
+    if path in ("/api/report/control-central.html", "/api/report/control-central.pdf"):
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        return _control_report_response(db_path, colado_id)
+
+    if path == "/api/export/control-central.zip":
+        colado_id = int(params.get("colado_id", ["0"])[0])
+        return _control_zip_response(db_path, colado_id)
+
+    return None
+
+
+def _csv_response(filename: str, csv_text: str) -> HttpBytesResponse:
+    body = csv_text.encode("utf-8")
+    return 200, _headers("text/csv; charset=utf-8", filename, body), body
+
+
+def _html_response(html: str) -> HttpBytesResponse:
+    body = html.encode("utf-8")
+    return 200, _headers("text/html; charset=utf-8", None, body), body
+
+
+def _not_found() -> HttpBytesResponse:
+    body = b"Not found"
+    return 404, _headers("text/plain; charset=utf-8", None, body), body
+
+
+def _headers(content_type: str, filename: str | None, body: bytes) -> dict[str, str]:
+    headers = {"Content-Type": content_type, "Content-Length": str(len(body))}
+    if filename:
+        headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return headers
+
+
+def _colado_report_response(db_path: Path, colado_id: int) -> HttpBytesResponse:
+    with connect(db_path) as conn:
+        colado = get_colado(conn, colado_id)
+        if not colado:
+            return _not_found()
+        readings = get_readings(conn, colado_id)
+        events = get_events(conn, colado_id)
+        zones = get_zones(conn, colado_id)
+        advances = get_advances(conn, colado_id)
+        alarms = list_operational_alarms(conn, colado_id, include_closed=True)
+        decisions = list_operator_decisions(conn, colado_id)
+        mold_state = calculate_mold_state(conn, colado_id) if zones else None
+        reference = get_reference_points(conn, colado.get("curva_id"))
+        prediction = calculate_state(readings, colado.get("parametros"), reference)
+    return _html_response(
+        render_colado_report(colado, readings, events, prediction, zones, advances, mold_state, alarms, decisions)
+    )
+
+
+def _control_report_response(db_path: Path, colado_id: int) -> HttpBytesResponse:
+    with connect(db_path) as conn:
+        init_db(conn)
+        context = build_control_report_context(conn, colado_id)
+        if not context["colado"]:
+            return _not_found()
+        html = render_control_report(context)
+        insert_generated_report(conn, {"colado_id": colado_id, "tipo": "CONTROL_CENTRAL", "resumen": context["resumen"]})
+    return _html_response(html)
+
+
+def _control_zip_response(db_path: Path, colado_id: int) -> HttpBytesResponse:
+    with connect(db_path) as conn:
+        init_db(conn)
+        context = build_control_report_context(conn, colado_id)
+        if not context["colado"]:
+            return _not_found()
+        files = {
+            "control_central.html": render_control_report(context),
+            "avances.csv": rows_to_csv(context["advances"]),
+            "turnos.csv": rows_to_csv(context["turnos"]),
+            "zonas.csv": rows_to_csv(context["zones"]),
+            "lecturas.csv": rows_to_csv(context["readings"]),
+            "eventos.csv": rows_to_csv(context["events"]),
+            "alarmas.csv": rows_to_csv(context["alarms"]),
+            "decisiones.csv": rows_to_csv(context["decisions"]),
+            "bitacora.csv": rows_to_csv(context["operational_log"]),
+            "desplomes.csv": rows_to_csv(context["desplomes"]),
+            "fotografias.csv": rows_to_csv([{k: v for k, v in row.items() if k != "imagen_data_url"} for row in context["fotografias"]]),
+        }
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, text in files.items():
+            archive.writestr(name, text.encode("utf-8"))
+        for photo in context["fotografias"]:
+            data_url = photo.get("imagen_data_url")
+            decoded = _decode_data_url(data_url)
+            if decoded:
+                archive.writestr(_photo_zip_name(photo, decoded["extension"]), decoded["bytes"])
+            elif data_url:
+                archive.writestr(f"fotografias/foto_{photo['id']}.dataurl.txt", str(data_url).encode("utf-8"))
+    body = buffer.getvalue()
+    return 200, _headers("application/zip", f"control_central_colado_{colado_id}.zip", body), body
+
+
+def _decode_data_url(value: Any) -> dict[str, Any] | None:
+    text = str(value or "")
+    if not text.startswith("data:") or "," not in text:
+        return None
+    meta, encoded = text.split(",", 1)
+    if ";base64" not in meta:
+        return None
+    mime = meta.removeprefix("data:").split(";", 1)[0].lower()
+    extension = {
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+    }.get(mime, "bin")
+    try:
+        return {"bytes": base64.b64decode(encoded, validate=True), "extension": extension}
+    except (ValueError, binascii.Error):
+        return None
+
+
+def _photo_zip_name(photo: dict[str, Any], extension: str) -> str:
+    raw = str(photo.get("descripcion") or f"foto_{photo.get('id') or 'sin_id'}")
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", raw).strip("_")[:80] or "foto"
+    return f"fotografias/{int(photo.get('id') or 0):04d}_{safe}.{extension}"
+
+
+def render_control_report(context: dict[str, Any]) -> str:
+    esc = escape_html
+    project = context["proyecto"]
+    colado = context["colado"]
+    summary = context["resumen"]
+    advances = context["advances"]
+    turnos = context["turnos"]
+    zones = context["zones"]
+    alarms = context["alarms"]
+    decisions = context["decisions"]
+    operational_log = context.get("operational_log") or []
+    report_log = context.get("bitacora_reporte") or []
+    events = context["events"]
+    readings = context["readings"]
+    fotos = context["fotografias"]
+    desplomes = context["desplomes"]
+    mold_state = context["mold_state"] or {}
+    target_speed = float(summary.get("ritmo_programado_cm_h") or 30)
+
+    turno_rows = _rows(
+        turnos,
+        lambda t: [
+            t.get("turno"),
+            t.get("inicio_turno"),
+            t.get("fin_turno"),
+            t.get("operador"),
+            t.get("avance_parcial_m"),
+            t.get("avance_acumulado_m"),
+            t.get("ritmo_cm_h"),
+            t.get("observaciones"),
+        ],
+    )
+    avance_rows = _rows(advances, lambda a: [a.get("fecha_hora"), a.get("avance_cm"), a.get("avance_acumulado_cm"), a.get("velocidad_real_cm_h"), a.get("operador")])
+    zone_rows = _rows(
+        zones[-80:],
+        lambda z: [
+            z.get("zona_numero"),
+            z.get("numero_olla") or z.get("zona_numero"),
+            z.get("volumen_olla_m3") or z.get("volumen_m3"),
+            f"{z.get('elevacion_inferior_cm')}-{z.get('elevacion_superior_cm')}",
+            z.get("hora_salida_planta") or z.get("hora_referencia_madurez"),
+            z.get("hora_inicio_descarga") or z.get("hora_inicio_llenado"),
+            z.get("estado"),
+        ],
+    )
+    alarm_rows = _rows(alarms[:40], lambda a: [a.get("fecha_hora_inicio"), a.get("tipo"), a.get("severidad"), a.get("estado"), a.get("mensaje")])
+    decision_rows = _rows(decisions[:40], lambda d: [d.get("fecha_hora"), d.get("recomendacion_sistema"), d.get("decision_operador"), d.get("operador"), d.get("supervisor"), d.get("observacion")])
+    bitacora_rows = _rows(report_log, lambda b: [b.get("fecha_hora"), b.get("tipo"), b.get("zona"), b.get("detalle"), b.get("operador"), b.get("supervisor")])
+    desplome_rows = _rows(desplomes[:60], lambda d: [d.get("fecha_hora"), d.get("punto"), d.get("direccion"), d.get("lectura_mm"), d.get("tolerancia_mm"), d.get("estado")])
+    photo_cards = "".join(_photo_card(photo) for photo in fotos)
+    chart = svg_line_chart(advances, "minuto_transcurrido", "avance_acumulado_cm", target_speed)
+    window = mold_state.get("ventana_molde") or {}
+    explanation = mold_state.get("explicacion_operativa") or {}
+    explanation_items = "".join(f"<li>{esc(item)}</li>" for item in explanation.get("items", []))
+    conclusion = _operational_conclusion(context)
+    conclusion_items = "".join(f"<li>{esc(item)}</li>" for item in conclusion["items"])
+
+    return f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Control Central De Deslizado - Colado {esc(colado.get('id'))}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 18px; color: #172026; }}
+    .sheet {{ border: 1px solid #737373; padding: 14px; }}
+    header {{ display: grid; grid-template-columns: 160px 1fr 160px; align-items: center; gap: 16px; text-align: center; }}
+    .logo {{ border: 1px solid #cbd5db; min-height: 64px; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 700; }}
+    .bar {{ background: #0ea5e9; color: #fff; text-align: center; font-weight: 700; padding: 6px; margin: 12px 0; }}
+    .summary {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 12px; }}
+    .box {{ border: 1px solid #cbd5db; padding: 8px; min-height: 54px; }}
+    .box b {{ display: block; color: #475569; font-size: 11px; text-transform: uppercase; }}
+    .layout {{ display: grid; grid-template-columns: 1.1fr 1.7fr 1fr; gap: 12px; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 11px; }}
+    th, td {{ border: 1px solid #d6dde1; padding: 4px; text-align: left; }}
+    th {{ background: #eef2f3; color: #334155; }}
+    h2 {{ font-size: 14px; margin: 12px 0 6px; }}
+    svg {{ width: 100%; border: 1px solid #d6dde1; }}
+    .photos {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }}
+    .operational-reading {{ border: 1px solid #94a3b8; border-left: 6px solid #0f766e; padding: 10px; margin: 10px 0 12px; background: #f8fafc; }}
+    .operational-reading strong {{ display: block; font-size: 15px; margin-bottom: 4px; }}
+    .operational-reading p {{ margin: 0 0 6px; font-weight: 700; }}
+    .operational-reading ul {{ margin: 0; padding-left: 18px; font-size: 11px; }}
+    .conclusion {{ border: 2px solid #cbd5db; border-left-width: 8px; padding: 10px; margin: 10px 0 12px; background: #fff; }}
+    .conclusion.ok {{ border-left-color: #147a4d; background: #f0fdf4; }}
+    .conclusion.warn {{ border-left-color: #b45309; background: #fff7ed; }}
+    .conclusion.critical {{ border-left-color: #b42318; background: #fee2e2; }}
+    .conclusion strong {{ display: block; font-size: 15px; margin-bottom: 4px; }}
+    .conclusion ul {{ margin: 0; padding-left: 18px; font-size: 11px; }}
+    figure {{ margin: 0; border: 1px solid #d6dde1; padding: 4px; break-inside: avoid; page-break-inside: avoid; }}
+    img, .photo-empty {{ width: 100%; height: 155px; object-fit: contain; background: #f1f5f9; display: block; }}
+    figcaption {{ font-size: 10px; color: #475569; margin-top: 4px; }}
+    .print {{ margin-bottom: 10px; }}
+    .photo-section {{ break-before: page; page-break-before: always; }}
+    .photo-empty {{ display: flex; align-items: center; justify-content: center; }}
+    @media print {{
+      .print {{ display: none; }}
+      body {{ margin: 0; }}
+      .sheet {{ border: 0; }}
+      .photos {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      img, .photo-empty {{ height: 180px; }}
+    }}
+  </style>
+</head>
+<body>
+  <button class="print" onclick="window.print()">Imprimir / Guardar PDF</button>
+  <section class="sheet">
+    <header>
+      <div class="logo">{esc(project.get('logo_izquierdo') or 'LOGO')}</div>
+      <div>
+        <strong>CLIENTE: {esc(project.get('cliente'))}</strong><br>
+        <strong>EDIFICIO: {esc(project.get('elemento') or project.get('obra'))}</strong><br>
+        <strong>UBICACION: {esc(project.get('ubicacion'))}</strong>
+      </div>
+      <div class="logo">{esc(project.get('logo_derecho') or 'LOGO')}</div>
+    </header>
+    <div class="bar">CONTROL CENTRAL DE DESLIZADO</div>
+    <div class="summary">
+      <div class="box"><b>Colado</b>#{esc(colado.get('id'))} {esc(colado.get('silo_id'))}</div>
+      <div class="box"><b>Altura visible</b>{esc(summary.get('altura_visible_m') or summary.get('altura_total_deslizada_m'))} m</div>
+      <div class="box"><b>Ritmo real</b>{esc(summary.get('ritmo_real_cm_h'))} cm/h</div>
+      <div class="box"><b>Ritmo programado</b>{esc(summary.get('ritmo_programado_cm_h'))} cm/h</div>
+      <div class="box"><b>Volumen estimado</b>{esc(project.get('volumen_estimado_m3'))} m3</div>
+      <div class="box"><b>Area cimbra</b>{esc(project.get('area_cimbra_m2'))} m2</div>
+      <div class="box"><b>Inicio operativo</b>{esc(summary.get('periodo_inicio') or colado.get('fecha_hora_inicio'))}</div>
+      <div class="box"><b>Estado colado</b>{esc(summary.get('estado_colado') or colado.get('estado'))}</div>
+      <div class="box"><b>Fecha cierre</b>{esc(summary.get('fecha_cierre') or colado.get('fecha_cierre') or 'Abierto')}</div>
+      <div class="box"><b>Duracion real</b>{esc(summary.get('duracion_real_dias'))} dias</div>
+      <div class="box"><b>Estado molde</b>{esc(mold_state.get('estado_operativo'))}</div>
+      <div class="box"><b>Ventana molde</b>{esc(window.get('base_cm'))}-{esc(window.get('corona_cm'))} cm</div>
+      <div class="box"><b>Alarmas</b>{esc(summary.get('alarmas'))}</div>
+      <div class="box"><b>Desplomes fuera</b>{esc(summary.get('desplomes_fuera_tolerancia'))}</div>
+    </div>
+    <section class="operational-reading">
+      <strong>{esc(explanation.get('titulo') or 'Lectura operativa')}</strong>
+      <p>{esc(explanation.get('resumen') or 'Sin explicacion SCADA disponible.')}</p>
+      <ul>{explanation_items}</ul>
+    </section>
+    <section class="conclusion {esc(conclusion['tone'])}">
+      <strong>Conclusion operativa: {esc(conclusion['title'])}</strong>
+      <ul>{conclusion_items}</ul>
+    </section>
+    <div class="layout">
+      <section>
+        <h2>Desplomes</h2>
+        <table><thead><tr><th>Fecha</th><th>Punto</th><th>Dir.</th><th>mm</th><th>Tol.</th><th>Estado</th></tr></thead><tbody>{desplome_rows}</tbody></table>
+      </section>
+      <section>
+        <h2>Avance Real Vs Programado</h2>
+        {chart}
+        <h2>Avance Por Turno</h2>
+        <table><thead><tr><th>Turno</th><th>Inicio</th><th>Fin</th><th>Operador</th><th>Parcial m</th><th>Acum. m</th><th>cm/h</th><th>Obs.</th></tr></thead><tbody>{turno_rows}</tbody></table>
+        <h2>Avances Del Molde</h2>
+        <table><thead><tr><th>Fecha</th><th>Avance cm</th><th>Acum. cm</th><th>cm/h</th><th>Operador</th></tr></thead><tbody>{avance_rows}</tbody></table>
+      </section>
+      <section>
+        <h2>Zonas</h2>
+        <table><thead><tr><th>Zona</th><th>Olla</th><th>m3</th><th>Elevacion</th><th>Salida planta</th><th>Inicio descarga</th><th>Estado</th></tr></thead><tbody>{zone_rows}</tbody></table>
+        <h2>Alarmas</h2>
+        <table><thead><tr><th>Inicio</th><th>Tipo</th><th>Sev.</th><th>Estado</th><th>Mensaje</th></tr></thead><tbody>{alarm_rows}</tbody></table>
+        <h2>Decisiones</h2>
+        <table><thead><tr><th>Fecha</th><th>Sistema</th><th>Operador</th><th>Op.</th><th>Sup.</th><th>Obs.</th></tr></thead><tbody>{decision_rows}</tbody></table>
+        <h2>Bitacora Operativa</h2>
+        <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Zona</th><th>Detalle</th><th>Operador</th><th>Supervisor</th></tr></thead><tbody>{bitacora_rows}</tbody></table>
+      </section>
+    </div>
+    <section class="photo-section">
+      <h2>Evidencia Fotografica</h2>
+      <div class="photos">{photo_cards or '<div class="photo-empty">Sin fotografias</div>'}</div>
+    </section>
+  </section>
+</body>
+</html>"""
+
+
+def _operational_conclusion(context: dict[str, Any]) -> dict[str, Any]:
+    advances = context.get("advances") or []
+    zones = context.get("zones") or []
+    readings = context.get("readings") or []
+    alarms = context.get("alarms") or []
+    decisions = context.get("decisions") or []
+    events = context.get("events") or []
+    active_high_alarms = [
+        alarm
+        for alarm in alarms
+        if str(alarm.get("estado") or "").upper() == "ACTIVA"
+        and str(alarm.get("severidad") or "").upper() in {"ALTA", "CRITICA"}
+    ]
+    off_recommendation = [
+        decision
+        for decision in decisions
+        if str(decision.get("conforme_recomendacion")) in {"0", "False", "false"}
+    ]
+    physical_findings = [
+        event
+        for event in events
+        if str(event.get("resultado_fisico") or "").lower() not in {"", "correcto"}
+    ]
+    items = [
+        f"Avances registrados: {len(advances)}; zonas registradas: {len(zones)}; lecturas de temperatura: {len(readings)}.",
+        f"Alarmas altas/criticas activas: {len(active_high_alarms)}; decisiones contra recomendacion: {len(off_recommendation)}.",
+        f"Eventos fisicos no conformes: {len(physical_findings)}.",
+    ]
+    if not advances:
+        items.append("Falta evidencia de avance del molde para cerrar control operativo.")
+    if not readings:
+        items.append("Faltan lecturas de temperatura para sustentar la madurez calculada.")
+    if not decisions:
+        items.append("Faltan decisiones del operador registradas con checklist.")
+    if active_high_alarms or off_recommendation:
+        return {"tone": "critical", "title": "Requiere revision de supervisor", "items": items}
+    if physical_findings or not readings or not decisions:
+        return {"tone": "warn", "title": "Control con observaciones", "items": items}
+    return {"tone": "ok", "title": "Control documentado sin alertas criticas activas", "items": items}
+
+
+def render_colado_report(
+    colado: dict[str, Any],
+    readings: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    prediction: dict[str, Any],
+    zones: list[dict[str, Any]] | None = None,
+    advances: list[dict[str, Any]] | None = None,
+    mold_state: dict[str, Any] | None = None,
+    alarms: list[dict[str, Any]] | None = None,
+    decisions: list[dict[str, Any]] | None = None,
+) -> str:
+    esc = escape_html
+    reading_rows = _rows(readings, lambda r: [r.get("minuto_transcurrido"), r.get("temperatura_concreto_c"), r.get("temperatura_ambiente_c"), r.get("humedad_relativa_pct"), r.get("origen")])
+    event_rows = _rows(events, lambda e: [e.get("fecha_hora"), e.get("decision_tomada"), e.get("resultado_fisico"), e.get("velocidad_deslizamiento_cm_h"), e.get("supervisor"), e.get("observacion")])
+    zone_rows = _rows(
+        zones or [],
+        lambda z: [
+            z.get("zona_numero"),
+            f"{z.get('elevacion_inferior_cm')}-{z.get('elevacion_superior_cm')}",
+            z.get("numero_olla") or z.get("zona_numero"),
+            z.get("volumen_olla_m3") or z.get("volumen_m3"),
+            z.get("hora_salida_planta") or z.get("hora_referencia_madurez"),
+            z.get("hora_inicio_descarga") or z.get("hora_inicio_llenado"),
+            z.get("origen_generacion"),
+            z.get("avance_generador_id"),
+            z.get("estado"),
+        ],
+    )
+    advance_rows = _rows(advances or [], lambda a: [a.get("fecha_hora"), a.get("avance_cm"), a.get("intervalo_minutos"), a.get("avance_acumulado_cm"), a.get("velocidad_real_cm_h"), a.get("receta_avance_id"), a.get("operador")])
+    alarm_rows = _rows(alarms or [], lambda a: [a.get("fecha_hora_inicio"), a.get("tipo"), a.get("severidad"), a.get("estado"), a.get("mensaje"), a.get("operador_reconoce")])
+    decision_rows = _rows(decisions or [], lambda d: [d.get("fecha_hora"), d.get("recomendacion_sistema"), d.get("decision_operador"), d.get("conforme_recomendacion"), d.get("operador"), d.get("supervisor"), d.get("observacion")])
+    mold_summary = ""
+    if mold_state:
+        next_move = mold_state.get("siguiente_avance_5min") or {}
+        mold_summary = f"""
+  <h2>Estado Del Molde</h2>
+  <div class="summary">
+    <div class="box"><b>Estado operativo</b><br>{esc(mold_state.get('estado_operativo'))}</div>
+    <div class="box"><b>Avance acumulado</b><br>{esc(mold_state.get('avance_acumulado_cm'))} cm</div>
+    <div class="box"><b>Velocidad real</b><br>{esc(mold_state.get('velocidad_real_cm_h'))} cm/h</div>
+    <div class="box"><b>Siguiente avance</b><br>{esc(next_move.get('avance_cm'))} cm</div>
+  </div>"""
+    avance_pct = round(float(prediction.get("avance") or 0) * 100, 1)
+    return f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Reporte Colado {esc(colado.get('id'))}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 24px; color: #172026; }}
+    h1, h2 {{ margin-bottom: 8px; }}
+    .summary {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }}
+    .box {{ border: 1px solid #ccd4d8; padding: 10px; border-radius: 6px; }}
+    table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
+    th, td {{ border-bottom: 1px solid #d6dde1; padding: 7px; text-align: left; }}
+    th {{ color: #5c6b73; }}
+    @media print {{ button {{ display: none; }} }}
+  </style>
+</head>
+<body>
+  <button onclick="window.print()">Imprimir / Guardar PDF</button>
+  <h1>Reporte De Colado #{esc(colado.get('id'))}</h1>
+  <p>Silo: {esc(colado.get('silo_id'))} - Estado: {esc(prediction.get('estado'))}</p>
+  <div class="summary">
+    <div class="box"><b>Madurez</b><br>{esc(prediction.get('madurez_acumulada_h_eq'))} h_eq</div>
+    <div class="box"><b>Avance</b><br>{avance_pct}%</div>
+    <div class="box"><b>Temp. actual</b><br>{esc(prediction.get('temperatura_actual_concreto_c'))} C</div>
+    <div class="box"><b>Min. restantes</b><br>{esc(prediction.get('minutos_estimados_restantes'))}</div>
+  </div>
+  {mold_summary}
+  <h2>Zonas Del Molde</h2>
+  <table><thead><tr><th>Zona</th><th>Elevacion cm</th><th>Olla</th><th>m3</th><th>Salida planta</th><th>Inicio descarga</th><th>Origen</th><th>Avance generador</th><th>Estado</th></tr></thead><tbody>{zone_rows}</tbody></table>
+  <h2>Avances Del Molde</h2>
+  <table><thead><tr><th>Fecha</th><th>Avance cm</th><th>Intervalo min</th><th>Acumulado cm</th><th>Velocidad cm/h</th><th>Receta</th><th>Operador</th></tr></thead><tbody>{advance_rows}</tbody></table>
+  <h2>Alarmas SCADA</h2>
+  <table><thead><tr><th>Inicio</th><th>Tipo</th><th>Severidad</th><th>Estado</th><th>Mensaje</th><th>Reconoce</th></tr></thead><tbody>{alarm_rows}</tbody></table>
+  <h2>Decisiones Del Operador</h2>
+  <table><thead><tr><th>Fecha</th><th>Recomendacion</th><th>Decision</th><th>Conforme</th><th>Operador</th><th>Supervisor</th><th>Observacion</th></tr></thead><tbody>{decision_rows}</tbody></table>
+  <h2>Eventos De Deslizamiento</h2>
+  <table><thead><tr><th>Fecha</th><th>Decision</th><th>Resultado</th><th>Velocidad</th><th>Supervisor</th><th>Observacion</th></tr></thead><tbody>{event_rows}</tbody></table>
+  <h2>Lecturas</h2>
+  <table><thead><tr><th>Min</th><th>Concreto C</th><th>Ambiente C</th><th>HR %</th><th>Origen</th></tr></thead><tbody>{reading_rows}</tbody></table>
+</body>
+</html>"""
+
+
+def _rows(rows: list[dict[str, Any]], cells) -> str:
+    return "".join("<tr>" + "".join(f"<td>{escape_html(cell)}</td>" for cell in cells(row)) + "</tr>" for row in rows)
+
+
+def _photo_card(photo: dict[str, Any]) -> str:
+    image = (
+        f"<img src=\"{escape_html(photo.get('imagen_data_url'))}\" />"
+        if photo.get("imagen_data_url")
+        else '<div class="photo-empty">Sin imagen</div>'
+    )
+    return f"<figure>{image}<figcaption>{escape_html(photo.get('fecha_hora'))}<br>{escape_html(photo.get('descripcion'))}</figcaption></figure>"
+
+
+_READING_COLUMNS = [
+    "id",
+    "colado_id",
+    "sensor_id",
+    "fecha_hora",
+    "minuto_transcurrido",
+    "temperatura_concreto_c",
+    "temperatura_ambiente_c",
+    "humedad_relativa_pct",
+    "origen",
+    "valido",
+    "motivo_invalidez",
+]
+
+_EVENT_COLUMNS = [
+    "id",
+    "colado_id",
+    "fecha_hora",
+    "minuto_transcurrido",
+    "velocidad_deslizamiento_cm_h",
+    "decision_tomada",
+    "resultado_fisico",
+    "checklist_no_desmorona",
+    "checklist_no_se_pega",
+    "checklist_acabado_aceptable",
+    "checklist_sin_arrastre",
+    "observacion",
+    "supervisor",
+]
+
+
+__all__ = ["handle_report_get", "render_colado_report", "render_control_report"]
