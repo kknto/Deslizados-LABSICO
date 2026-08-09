@@ -38,6 +38,35 @@ class QueryHandlersTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("proyecto", project)
 
+    def test_bootstrap_reports_latest_sensor_status_without_group_by_laxness(self) -> None:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute(
+                """
+                INSERT INTO lecturas(
+                    colado_id, sensor_id, fecha_hora, minuto_transcurrido,
+                    temperatura_concreto_c, temperatura_ambiente_c,
+                    humedad_relativa_pct, origen
+                )
+                VALUES
+                    (1, NULL, '2026-07-24T09:05', 5, 28.0, 30.0, 70.0, 'sensor'),
+                    (1, NULL, '2026-07-24T09:10', 10, 29.0, 31.0, 71.0, 'sensor'),
+                    (1, 7, '2026-07-24T09:15', 15, 30.0, 32.0, 72.0, 'sensor')
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        status, bootstrap = handle_get("/api/bootstrap", "", self.db_path)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(len(bootstrap["sensores"]), 2)
+        self.assertEqual(bootstrap["sensores"][0]["sensor"], "sin_id")
+        self.assertEqual(bootstrap["sensores"][0]["ultima_fecha_hora"], "2026-07-24T09:10")
+        self.assertEqual(bootstrap["sensores"][1]["sensor"], "7")
+
     def test_mold_state_endpoint_contract(self) -> None:
         status, state = handle_get("/api/molde/estado", "colado_id=1", self.db_path)
         self.assertEqual(status, 200)

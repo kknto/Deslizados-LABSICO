@@ -124,17 +124,25 @@ def list_sensor_status(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         for row in conn.execute(
             """
             SELECT
-                COALESCE(l.sensor_id, 0) AS sensor_id,
-                CASE WHEN l.sensor_id IS NULL THEN 'sin_id' ELSE CAST(l.sensor_id AS TEXT) END AS sensor,
-                MAX(l.fecha_hora) AS ultima_fecha_hora,
-                l.colado_id,
-                l.temperatura_concreto_c,
-                l.temperatura_ambiente_c,
-                l.humedad_relativa_pct,
-                l.origen
-            FROM lecturas l
-            WHERE l.origen = 'sensor'
-            GROUP BY COALESCE(l.sensor_id, 0)
+                COALESCE(sensor_id, 0) AS sensor_id,
+                CASE WHEN sensor_id IS NULL THEN 'sin_id' ELSE CAST(sensor_id AS TEXT) END AS sensor,
+                fecha_hora AS ultima_fecha_hora,
+                colado_id,
+                temperatura_concreto_c,
+                temperatura_ambiente_c,
+                humedad_relativa_pct,
+                origen
+            FROM (
+                SELECT
+                    l.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(l.sensor_id, 0)
+                        ORDER BY l.fecha_hora DESC, l.id DESC
+                    ) AS rn
+                FROM lecturas l
+                WHERE l.origen = 'sensor'
+            ) latest_sensor
+            WHERE rn = 1
             ORDER BY sensor_id
             """
         ).fetchall()
