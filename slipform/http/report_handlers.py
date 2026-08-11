@@ -291,7 +291,17 @@ def render_control_report(context: dict[str, Any]) -> str:
     bitacora_rows = _rows(report_log, lambda b: [b.get("fecha_hora"), b.get("tipo"), b.get("zona"), b.get("detalle"), b.get("operador"), b.get("supervisor")])
     desplome_rows = _rows(desplomes[:60], lambda d: [d.get("fecha_hora"), d.get("punto"), d.get("direccion"), d.get("lectura_mm"), d.get("tolerancia_mm"), d.get("estado")])
     photo_cards = "".join(_photo_card(photo) for photo in fotos)
-    chart = svg_line_chart(advances, "minuto_transcurrido", "avance_acumulado_cm", target_speed)
+    chart = svg_line_chart(
+        advances,
+        "minuto_transcurrido",
+        "avance_acumulado_cm",
+        target_speed,
+        x_label_key="fecha_hora",
+        x_axis_title="Fecha / hora",
+        y_axis_title="Avance acumulado (cm)",
+        y_tick_step=100,
+        legend=True,
+    )
     window = mold_state.get("ventana_molde") or {}
     explanation = mold_state.get("explicacion_operativa") or {}
     explanation_items = "".join(f"<li>{esc(item)}</li>" for item in explanation.get("items", []))
@@ -476,7 +486,17 @@ def _printable_control_summary(context: dict[str, Any] | None) -> str:
     mold_state = context.get("mold_state") or {}
     window = mold_state.get("ventana_molde") or {}
     target_speed = float(summary.get("ritmo_programado_cm_h") or 30)
-    chart = svg_line_chart(advances, "minuto_transcurrido", "avance_acumulado_cm", target_speed)
+    chart = svg_line_chart(
+        advances,
+        "minuto_transcurrido",
+        "avance_acumulado_cm",
+        target_speed,
+        x_label_key="fecha_hora",
+        x_axis_title="Fecha / hora",
+        y_axis_title="Avance acumulado (cm)",
+        y_tick_step=100,
+        legend=True,
+    )
     turno_rows = _rows(
         turnos,
         lambda t: [

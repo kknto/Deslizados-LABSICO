@@ -23,6 +23,35 @@ class ReportRenderingTests(unittest.TestCase):
         self.assertIn("Duracion 60 min", chart)
         self.assertNotIn("points='-0", chart)
 
+    def test_svg_line_chart_renders_axis_ticks_legend_and_datetime_labels(self) -> None:
+        chart = svg_line_chart(
+            [
+                {"minuto": 0, "avance": 0, "fecha_hora": "2026-08-04T19:35"},
+                {"minuto": 720, "avance": 220, "fecha_hora": "2026-08-05T07:35"},
+                {"minuto": 1440, "avance": 510, "fecha_hora": "2026-08-05T19:35"},
+                {"minuto": 2810, "avance": 783, "fecha_hora": "2026-08-07T18:25"},
+            ],
+            "minuto",
+            "avance",
+            expected_speed=30,
+            x_label_key="fecha_hora",
+            x_axis_title="Fecha / hora",
+            y_axis_title="Avance acumulado (cm)",
+            y_tick_step=100,
+            legend=True,
+        )
+
+        self.assertIn("Avance acumulado (cm)", chart)
+        self.assertIn("Fecha / hora", chart)
+        self.assertIn("Avance real", chart)
+        self.assertIn("Avance esperado", chart)
+        self.assertIn("100 cm", chart)
+        self.assertIn("200 cm", chart)
+        self.assertIn("300 cm", chart)
+        self.assertIn("04-ago 19:35", chart)
+        self.assertIn("07-ago 18:25", chart)
+        self.assertNotEqual(chart.count("min</text>"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
