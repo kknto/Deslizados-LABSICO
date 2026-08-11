@@ -22,6 +22,9 @@ from slipform.db import (
 )
 from slipform.mold import calculate_mold_state
 
+REPORT_PROGRAMMED_SPEED_CM_H = 14.05
+REPORT_PROGRAMMED_INTERVAL_LABEL = "30 cm / 100 min"
+
 
 def build_control_report_context(conn, colado_id: int) -> dict[str, Any]:
     colado = get_colado(conn, colado_id)
@@ -47,13 +50,15 @@ def build_control_report_context(conn, colado_id: int) -> dict[str, Any]:
     advance_previous_cm = float((mold_state or {}).get("progreso_operativo", {}).get("avance_previo_cm") or 0.0)
     advance_visible_cm = float((mold_state or {}).get("progreso_operativo", {}).get("avance_total_cm") or latest_advance.get("avance_acumulado_cm") or 0.0)
     total_height_m = float(latest_advance.get("avance_acumulado_cm") or 0) / 100.0
-    target_speed = float((mold_state or {}).get("receta_avance", {}).get("velocidad_objetivo_cm_h") or 30)
+    operational_target_speed = float((mold_state or {}).get("receta_avance", {}).get("velocidad_objetivo_cm_h") or 30)
     summary = {
         "altura_total_deslizada_m": round(total_height_m, 3),
         "altura_visible_m": round(advance_visible_cm / 100.0, 3),
         "altura_previa_m": round(advance_previous_cm / 100.0, 3),
         "ritmo_real_cm_h": latest_advance.get("velocidad_real_cm_h"),
-        "ritmo_programado_cm_h": target_speed,
+        "ritmo_programado_cm_h": REPORT_PROGRAMMED_SPEED_CM_H,
+        "ritmo_programado_detalle": REPORT_PROGRAMMED_INTERVAL_LABEL,
+        "ritmo_operativo_receta_cm_h": operational_target_speed,
         "duracion_real_dias": duration_days,
         "periodo_inicio": start,
         "periodo_fin": end,

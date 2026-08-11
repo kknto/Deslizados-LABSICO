@@ -33,6 +33,9 @@ from slipform.reports.rendering import escape_html, svg_line_chart
 HttpBytesResponse = tuple[int, dict[str, str], bytes]
 ROOT = Path(__file__).resolve().parents[2]
 LABSICO_LOGO_PATH = ROOT / "static" / "assets" / "labsico-logo.jpg"
+FIRST_CAST_REFERENCE_LINES = [
+    {"label": "Primer colado 5.12 cm/h", "speed_cm_h": 5.12, "color": "#7c3aed"},
+]
 
 
 def handle_report_get(path: str, query: str, db_path: Path) -> HttpBytesResponse | None:
@@ -257,7 +260,7 @@ def render_control_report(context: dict[str, Any]) -> str:
     fotos = context["fotografias"]
     desplomes = context["desplomes"]
     mold_state = context["mold_state"] or {}
-    target_speed = float(summary.get("ritmo_programado_cm_h") or 30)
+    programmed_speed_label = _programmed_speed_label(summary)
     labsico_logo = _labsico_logo_markup()
 
     turno_rows = _rows(
@@ -295,12 +298,14 @@ def render_control_report(context: dict[str, Any]) -> str:
         advances,
         "minuto_transcurrido",
         "avance_acumulado_cm",
-        target_speed,
+        None,
         x_label_key="fecha_hora",
         x_axis_title="Fecha / hora",
         y_axis_title="Avance acumulado (cm)",
         y_tick_step=100,
         legend=True,
+        real_label="Colado actual",
+        reference_lines=FIRST_CAST_REFERENCE_LINES,
     )
     window = mold_state.get("ventana_molde") or {}
     explanation = mold_state.get("explicacion_operativa") or {}
@@ -373,7 +378,7 @@ def render_control_report(context: dict[str, Any]) -> str:
       <div class="box"><b>Colado</b>#{esc(colado.get('id'))} {esc(colado.get('silo_id'))}</div>
       <div class="box"><b>Altura visible</b>{esc(summary.get('altura_visible_m') or summary.get('altura_total_deslizada_m'))} m</div>
       <div class="box"><b>Ritmo real</b>{esc(summary.get('ritmo_real_cm_h'))} cm/h</div>
-      <div class="box"><b>Ritmo programado</b>{esc(summary.get('ritmo_programado_cm_h'))} cm/h</div>
+      <div class="box"><b>Ritmo programado</b>{programmed_speed_label}</div>
       <div class="box"><b>Volumen estimado</b>{esc(project.get('volumen_estimado_m3'))} m3</div>
       <div class="box"><b>Area cimbra</b>{esc(project.get('area_cimbra_m2'))} m2</div>
       <div class="box"><b>Inicio operativo</b>{esc(summary.get('periodo_inicio') or colado.get('fecha_hora_inicio'))}</div>
@@ -400,7 +405,7 @@ def render_control_report(context: dict[str, Any]) -> str:
         <table><thead><tr><th>Fecha</th><th>Punto</th><th>Dir.</th><th>mm</th><th>Tol.</th><th>Estado</th></tr></thead><tbody>{desplome_rows}</tbody></table>
       </section>
       <section>
-        <h2>Avance Real Vs Programado</h2>
+        <h2>Avance Real Vs Primer Colado</h2>
         {chart}
         <h2>Avance Por Turno</h2>
         <table><thead><tr><th>Turno</th><th>Inicio</th><th>Fin</th><th>Operador</th><th>Parcial m</th><th>Acum. m</th><th>cm/h</th><th>Obs.</th></tr></thead><tbody>{turno_rows}</tbody></table>
@@ -432,6 +437,15 @@ def _labsico_logo_markup() -> str:
         return "LABSICO"
     encoded = base64.b64encode(LABSICO_LOGO_PATH.read_bytes()).decode("ascii")
     return f'<img src="data:image/jpeg;base64,{encoded}" alt="LABSICO" />'
+
+
+def _programmed_speed_label(summary: dict[str, Any]) -> str:
+    speed = summary.get("ritmo_programado_cm_h")
+    detail = summary.get("ritmo_programado_detalle")
+    label = f"{speed} cm/h" if speed is not None else "-- cm/h"
+    if detail:
+        label = f"{label} ({detail})"
+    return escape_html(label)
 
 
 def _operational_conclusion(context: dict[str, Any]) -> dict[str, Any]:
@@ -485,17 +499,19 @@ def _printable_control_summary(context: dict[str, Any] | None) -> str:
     turnos = context.get("turnos") or []
     mold_state = context.get("mold_state") or {}
     window = mold_state.get("ventana_molde") or {}
-    target_speed = float(summary.get("ritmo_programado_cm_h") or 30)
+    programmed_speed_label = _programmed_speed_label(summary)
     chart = svg_line_chart(
         advances,
         "minuto_transcurrido",
         "avance_acumulado_cm",
-        target_speed,
+        None,
         x_label_key="fecha_hora",
         x_axis_title="Fecha / hora",
         y_axis_title="Avance acumulado (cm)",
         y_tick_step=100,
         legend=True,
+        real_label="Colado actual",
+        reference_lines=FIRST_CAST_REFERENCE_LINES,
     )
     turno_rows = _rows(
         turnos,
@@ -520,7 +536,7 @@ def _printable_control_summary(context: dict[str, Any] | None) -> str:
       <div class="control-box"><b>Colado</b>#{esc(colado.get('id'))} {esc(colado.get('silo_id'))}</div>
       <div class="control-box"><b>Altura visible</b>{esc(summary.get('altura_visible_m') or summary.get('altura_total_deslizada_m'))} m</div>
       <div class="control-box"><b>Ritmo real</b>{esc(summary.get('ritmo_real_cm_h'))} cm/h</div>
-      <div class="control-box"><b>Ritmo programado</b>{esc(summary.get('ritmo_programado_cm_h'))} cm/h</div>
+      <div class="control-box"><b>Ritmo programado</b>{programmed_speed_label}</div>
       <div class="control-box"><b>Inicio operativo</b>{esc(summary.get('periodo_inicio') or colado.get('fecha_hora_inicio'))}</div>
       <div class="control-box"><b>Estado colado</b>{esc(summary.get('estado_colado') or colado.get('estado'))}</div>
       <div class="control-box"><b>Fecha cierre</b>{esc(summary.get('fecha_cierre') or colado.get('fecha_cierre') or 'Abierto')}</div>
@@ -532,7 +548,7 @@ def _printable_control_summary(context: dict[str, Any] | None) -> str:
     </div>
     <div class="control-layout">
       <section>
-        <h3>Avance Real Vs Programado</h3>
+        <h3>Avance Real Vs Primer Colado</h3>
         {chart}
       </section>
       <section>

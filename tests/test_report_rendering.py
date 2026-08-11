@@ -52,6 +52,29 @@ class ReportRenderingTests(unittest.TestCase):
         self.assertIn("07-ago 18:25", chart)
         self.assertNotEqual(chart.count("min</text>"), 2)
 
+    def test_svg_line_chart_renders_reference_line_without_expected_speed(self) -> None:
+        chart = svg_line_chart(
+            [
+                {"minuto": 0, "avance": 0, "fecha_hora": "2026-08-04T19:35"},
+                {"minuto": 2810, "avance": 783, "fecha_hora": "2026-08-07T18:25"},
+            ],
+            "minuto",
+            "avance",
+            x_label_key="fecha_hora",
+            x_axis_title="Fecha / hora",
+            y_axis_title="Avance acumulado (cm)",
+            y_tick_step=100,
+            legend=True,
+            real_label="Colado actual",
+            reference_lines=[{"label": "Primer colado 5.12 cm/h", "speed_cm_h": 5.12, "color": "#7c3aed"}],
+        )
+
+        self.assertIn("Colado actual", chart)
+        self.assertIn("Primer colado 5.12 cm/h", chart)
+        self.assertIn("stroke='#7c3aed'", chart)
+        self.assertNotIn("Avance esperado", chart)
+        self.assertNotIn("stroke-dasharray", chart)
+
 
 if __name__ == "__main__":
     unittest.main()

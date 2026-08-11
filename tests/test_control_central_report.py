@@ -39,6 +39,9 @@ class ControlCentralReportTests(unittest.TestCase):
         context = build_control_report_context(self.conn, colado_id)
         self.assertEqual(context["colado"]["id"], colado_id)
         self.assertEqual(context["resumen"]["altura_total_deslizada_m"], 0.025)
+        self.assertEqual(context["resumen"]["ritmo_programado_cm_h"], 14.05)
+        self.assertEqual(context["resumen"]["ritmo_programado_detalle"], "30 cm / 100 min")
+        self.assertEqual(context["resumen"]["ritmo_operativo_receta_cm_h"], 30.0)
         self.assertEqual(len(context["advances"]), 1)
         self.assertEqual(context["operational_log"][0]["tipo"], "AVANCE")
 
@@ -75,6 +78,12 @@ class ControlCentralReportTests(unittest.TestCase):
         self.assertIn("Historico 2026-08-05", html)
         self.assertIn("2026-08-05T02:30", html)
         self.assertIn("2026-08-06T00:07", html)
+        self.assertIn("14.05 cm/h (30 cm / 100 min)", html)
+        self.assertIn("Avance Real Vs Primer Colado", html)
+        self.assertIn("Colado actual", html)
+        self.assertIn("Primer colado 5.12 cm/h", html)
+        self.assertNotIn("Avance esperado", html)
+        self.assertNotIn("stroke-dasharray", html)
 
     def test_control_report_includes_operational_conclusion(self) -> None:
         colado_id = create_colado(
@@ -234,17 +243,22 @@ class ControlCentralReportTests(unittest.TestCase):
             "Altura visible",
             "Ritmo programado",
             "Estado molde",
-            "Avance Real Vs Programado",
+            "Avance Real Vs Primer Colado",
             "Avance Por Turno",
             "printable-header",
             "printable-logo",
             "LABSICO",
+            "14.05 cm/h (30 cm / 100 min)",
+            "Colado actual",
+            "Primer colado 5.12 cm/h",
         ):
             self.assertIn(token, html)
         header = html.split("Resumen Operativo De Deslizado", 1)[0]
         self.assertNotIn("Estado: SIN_DATOS", header)
         self.assertNotIn("<b>Madurez</b>", header)
         self.assertNotIn("<b>Temp. actual</b>", header)
+        self.assertNotIn("Avance esperado", html)
+        self.assertNotIn("stroke-dasharray", html)
         self.assertNotIn("orange", html.lower())
 
     def test_printable_colado_report_uses_historical_control_turns_and_chart(self) -> None:

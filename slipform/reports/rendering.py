@@ -30,6 +30,8 @@ def svg_line_chart(
     y_axis_title: str = "",
     y_tick_step: float | None = None,
     legend: bool = False,
+    real_label: str = "Avance real",
+    reference_lines: list[dict[str, Any]] | None = None,
 ) -> str:
     width, height = 900, 300
     margin_left, margin_right, margin_top, margin_bottom = 72, 24, 42, 62
@@ -51,6 +53,9 @@ def svg_line_chart(
     max_y = max(1.0, *(y for _, y, _ in clean))
     if expected_speed:
         max_y = max(max_y, (expected_speed / 60.0) * max_x)
+    references = _normalize_reference_lines(reference_lines)
+    for reference in references:
+        max_y = max(max_y, (float(reference["speed_cm_h"]) / 60.0) * max_x)
     step = _resolve_y_step(max_y, y_tick_step)
     max_y = max(step, math.ceil(max_y / step) * step)
     y_ticks = [round(value, 3) for value in _inclusive_range(0.0, max_y, step)]
@@ -66,6 +71,10 @@ def svg_line_chart(
     if expected_speed:
         target_y = (expected_speed / 60.0) * max_x
         expected = f"<polyline points='{xy(0, 0)} {xy(max_x, target_y)}' fill='none' stroke='#64748b' stroke-width='2.4' stroke-dasharray='7 7'/>"
+    reference_markup = "\n".join(
+        _reference_line_markup(reference, max_x, xy)
+        for reference in references
+    )
     y_grid = "\n".join(_y_tick_markup(tick, xy, margin_left, width - margin_right) for tick in y_ticks)
     x_grid = "\n".join(
         _x_tick_markup(tick["x"], tick["label"], max_x, margin_left, plot_width, margin_top, height - margin_bottom)
@@ -77,9 +86,9 @@ def svg_line_chart(
         legend_markup = f"""
       <g aria-label='Leyenda'>
         <line x1='{margin_left}' y1='18' x2='{margin_left + 30}' y2='18' stroke='#155e75' stroke-width='3'/>
-        <text x='{margin_left + 38}' y='22' font-size='12' fill='#172026'>Avance real</text>
-        <line x1='{margin_left + 140}' y1='18' x2='{margin_left + 170}' y2='18' stroke='#64748b' stroke-width='2.4' stroke-dasharray='7 7'/>
-        <text x='{margin_left + 178}' y='22' font-size='12' fill='#172026'>Avance esperado</text>
+        <text x='{margin_left + 38}' y='22' font-size='12' fill='#172026'>{escape_html(real_label)}</text>
+        {_legend_reference_items(references, margin_left + 150)}
+        {_expected_legend_item(expected_speed, margin_left + 150 + (len(references) * 210))}
       </g>"""
     x_title = f"<text x='{margin_left + plot_width / 2:.1f}' y='{height - 8}' text-anchor='middle' font-size='12' fill='#172026'>{escape_html(x_axis_title)}</text>" if x_axis_title else ""
     y_title = (
@@ -89,7 +98,7 @@ def svg_line_chart(
         else ""
     )
     return f"""
-    <svg viewBox='0 0 {width} {height}' role='img' aria-label='Grafica de avance real contra avance esperado'>
+    <svg viewBox='0 0 {width} {height}' role='img' aria-label='Grafica de avance del colado contra referencias'>
       <rect x='0' y='0' width='{width}' height='{height}' fill='#fbfcfd'/>
       {legend_markup}
       {y_grid}
@@ -97,6 +106,7 @@ def svg_line_chart(
       <line x1='{margin_left}' y1='{margin_top}' x2='{margin_left}' y2='{height - margin_bottom}' stroke='#94a3b8'/>
       <line x1='{margin_left}' y1='{height - margin_bottom}' x2='{width - margin_right}' y2='{height - margin_bottom}' stroke='#94a3b8'/>
       {expected}
+      {reference_markup}
       <polyline points='{real}' fill='none' stroke='#155e75' stroke-width='3'/>
       {real_points}
       <text x='{width - margin_right}' y='24' text-anchor='end' font-size='11' fill='#475569'>Duracion {max_x:.0f} min</text>
@@ -172,6 +182,53 @@ def _sample_points(clean: list[tuple[float, float, datetime | None]]) -> list[tu
     if sampled[-1] != clean[-1]:
         sampled.append(clean[-1])
     return sampled
+
+
+def _normalize_reference_lines(reference_lines: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for index, reference in enumerate(reference_lines or []):
+        try:
+            speed = float(reference.get("speed_cm_h") or 0)
+        except (TypeError, ValueError):
+            continue
+        if speed <= 0:
+            continue
+        normalized.append(
+            {
+                "label": str(reference.get("label") or f"Referencia {index + 1}"),
+                "speed_cm_h": speed,
+                "color": str(reference.get("color") or "#b45309"),
+            }
+        )
+    return normalized
+
+
+def _reference_line_markup(reference: dict[str, Any], max_x: float, xy) -> str:
+    target_y = (float(reference["speed_cm_h"]) / 60.0) * max_x
+    return (
+        f"<polyline points='{xy(0, 0)} {xy(max_x, target_y)}' fill='none' "
+        f"stroke='{escape_html(reference['color'])}' stroke-width='2.6'/>"
+    )
+
+
+def _legend_reference_items(references: list[dict[str, Any]], start_x: float) -> str:
+    items = []
+    for index, reference in enumerate(references):
+        x = start_x + index * 210
+        items.append(
+            f"<line x1='{x}' y1='18' x2='{x + 30}' y2='18' stroke='{escape_html(reference['color'])}' stroke-width='2.6'/>"
+            f"<text x='{x + 38}' y='22' font-size='12' fill='#172026'>{escape_html(reference['label'])}</text>"
+        )
+    return "".join(items)
+
+
+def _expected_legend_item(expected_speed: float | None, start_x: float) -> str:
+    if not expected_speed:
+        return ""
+    return (
+        f"<line x1='{start_x}' y1='18' x2='{start_x + 30}' y2='18' stroke='#64748b' stroke-width='2.4' stroke-dasharray='7 7'/>"
+        f"<text x='{start_x + 38}' y='22' font-size='12' fill='#172026'>Avance esperado</text>"
+    )
 
 
 def _y_tick_markup(tick: float, xy, x1: float, x2: float) -> str:
