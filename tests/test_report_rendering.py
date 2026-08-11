@@ -75,6 +75,39 @@ class ReportRenderingTests(unittest.TestCase):
         self.assertNotIn("Avance esperado", chart)
         self.assertNotIn("stroke-dasharray", chart)
 
+    def test_svg_line_chart_renders_programmed_speed_and_hour_axis(self) -> None:
+        chart = svg_line_chart(
+            [
+                {"minuto": 0, "avance": 0, "fecha_hora": "2026-08-04T19:35"},
+                {"minuto": 720, "avance": 220, "fecha_hora": "2026-08-05T07:35"},
+                {"minuto": 1440, "avance": 510, "fecha_hora": "2026-08-05T19:35"},
+                {"minuto": 2810, "avance": 783, "fecha_hora": "2026-08-07T18:25"},
+            ],
+            "minuto",
+            "avance",
+            expected_speed=14.05,
+            x_label_key="fecha_hora",
+            x_axis_title="Horas transcurridas",
+            y_axis_title="Avance acumulado (cm)",
+            y_tick_step=100,
+            legend=True,
+            real_label="Colado actual",
+            reference_lines=[{"label": "Primer colado 5.12 cm/h", "speed_cm_h": 5.12, "color": "#7c3aed"}],
+            expected_label="Programado 14.05 cm/h",
+            x_tick_mode="hours",
+        )
+
+        self.assertIn("Colado actual", chart)
+        self.assertIn("Programado 14.05 cm/h", chart)
+        self.assertIn("Primer colado 5.12 cm/h", chart)
+        self.assertIn("stroke-dasharray", chart)
+        self.assertIn("Horas transcurridas", chart)
+        self.assertIn(">0 h</text>", chart)
+        self.assertIn(">12 h</text>", chart)
+        self.assertIn(">24 h</text>", chart)
+        self.assertIn("Duracion 46.8 h", chart)
+        self.assertNotIn("04-ago", chart)
+
 
 if __name__ == "__main__":
     unittest.main()

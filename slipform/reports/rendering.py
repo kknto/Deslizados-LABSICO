@@ -32,6 +32,8 @@ def svg_line_chart(
     legend: bool = False,
     real_label: str = "Avance real",
     reference_lines: list[dict[str, Any]] | None = None,
+    expected_label: str = "Avance esperado",
+    x_tick_mode: str = "auto",
 ) -> str:
     width, height = 900, 300
     margin_left, margin_right, margin_top, margin_bottom = 72, 24, 42, 62
@@ -59,7 +61,8 @@ def svg_line_chart(
     step = _resolve_y_step(max_y, y_tick_step)
     max_y = max(step, math.ceil(max_y / step) * step)
     y_ticks = [round(value, 3) for value in _inclusive_range(0.0, max_y, step)]
-    x_ticks = _build_x_ticks(clean, max_x)
+    x_ticks = _build_x_ticks(clean, max_x, x_tick_mode)
+    duration_label = _duration_label(max_x, x_tick_mode)
 
     def xy(x: float, y: float) -> str:
         px = margin_left + (x / max_x) * plot_width
@@ -87,8 +90,8 @@ def svg_line_chart(
       <g aria-label='Leyenda'>
         <line x1='{margin_left}' y1='18' x2='{margin_left + 30}' y2='18' stroke='#155e75' stroke-width='3'/>
         <text x='{margin_left + 38}' y='22' font-size='12' fill='#172026'>{escape_html(real_label)}</text>
-        {_legend_reference_items(references, margin_left + 150)}
-        {_expected_legend_item(expected_speed, margin_left + 150 + (len(references) * 210))}
+        {_expected_legend_item(expected_speed, expected_label, margin_left + 150)}
+        {_legend_reference_items(references, margin_left + 150 + (210 if expected_speed else 0))}
       </g>"""
     x_title = f"<text x='{margin_left + plot_width / 2:.1f}' y='{height - 8}' text-anchor='middle' font-size='12' fill='#172026'>{escape_html(x_axis_title)}</text>" if x_axis_title else ""
     y_title = (
@@ -109,7 +112,7 @@ def svg_line_chart(
       {reference_markup}
       <polyline points='{real}' fill='none' stroke='#155e75' stroke-width='3'/>
       {real_points}
-      <text x='{width - margin_right}' y='24' text-anchor='end' font-size='11' fill='#475569'>Duracion {max_x:.0f} min</text>
+      <text x='{width - margin_right}' y='24' text-anchor='end' font-size='11' fill='#475569'>Duracion {duration_label}</text>
       {x_title}
       {y_title}
     </svg>
@@ -156,7 +159,9 @@ def _inclusive_range(start: float, stop: float, step: float) -> list[float]:
     return values
 
 
-def _build_x_ticks(clean: list[tuple[float, float, datetime | None]], max_x: float) -> list[dict[str, Any]]:
+def _build_x_ticks(clean: list[tuple[float, float, datetime | None]], max_x: float, mode: str = "auto") -> list[dict[str, Any]]:
+    if mode == "hours":
+        return _build_hour_ticks(max_x)
     tick_count = 6 if max_x >= 300 else 5
     positions = [round((max_x / (tick_count - 1)) * index, 3) for index in range(tick_count)]
     datetimes = [(x, dt) for x, _, dt in clean if dt is not None]
@@ -172,6 +177,37 @@ def _build_x_ticks(clean: list[tuple[float, float, datetime | None]], max_x: flo
             for x in positions
         ]
     return [{"x": x, "label": f"{_format_number(x)} min"} for x in positions]
+
+
+def _build_hour_ticks(max_x: float) -> list[dict[str, Any]]:
+    max_hours = max_x / 60.0
+    step_hours = _resolve_hour_step(max_hours)
+    ticks: list[dict[str, Any]] = []
+    current = 0.0
+    while current * 60.0 <= max_x + 0.001:
+        ticks.append({"x": current * 60.0, "label": f"{_format_hours(current)} h"})
+        current += step_hours
+    if not ticks or abs(float(ticks[-1]["x"]) - max_x) > max(1.0, step_hours * 60.0 * 0.2):
+        ticks.append({"x": max_x, "label": f"{_format_hours(max_hours)} h"})
+    return ticks
+
+
+def _resolve_hour_step(max_hours: float) -> float:
+    target = max_hours / 5.0
+    for step in (0.5, 1, 2, 4, 6, 8, 12, 24, 48):
+        if target <= step:
+            return float(step)
+    return float(math.ceil(target / 24.0) * 24)
+
+
+def _format_hours(value: float) -> str:
+    return str(int(round(value))) if abs(value - round(value)) < 0.05 else f"{value:.1f}"
+
+
+def _duration_label(max_x: float, mode: str) -> str:
+    if mode == "hours":
+        return f"{_format_hours(max_x / 60.0)} h"
+    return f"{max_x:.0f} min"
 
 
 def _sample_points(clean: list[tuple[float, float, datetime | None]]) -> list[tuple[float, float, datetime | None]]:
@@ -222,12 +258,12 @@ def _legend_reference_items(references: list[dict[str, Any]], start_x: float) ->
     return "".join(items)
 
 
-def _expected_legend_item(expected_speed: float | None, start_x: float) -> str:
+def _expected_legend_item(expected_speed: float | None, expected_label: str, start_x: float) -> str:
     if not expected_speed:
         return ""
     return (
         f"<line x1='{start_x}' y1='18' x2='{start_x + 30}' y2='18' stroke='#64748b' stroke-width='2.4' stroke-dasharray='7 7'/>"
-        f"<text x='{start_x + 38}' y='22' font-size='12' fill='#172026'>Avance esperado</text>"
+        f"<text x='{start_x + 38}' y='22' font-size='12' fill='#172026'>{escape_html(expected_label)}</text>"
     )
 
 

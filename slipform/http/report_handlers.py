@@ -294,18 +294,20 @@ def render_control_report(context: dict[str, Any]) -> str:
     bitacora_rows = _rows(report_log, lambda b: [b.get("fecha_hora"), b.get("tipo"), b.get("zona"), b.get("detalle"), b.get("operador"), b.get("supervisor")])
     desplome_rows = _rows(desplomes[:60], lambda d: [d.get("fecha_hora"), d.get("punto"), d.get("direccion"), d.get("lectura_mm"), d.get("tolerancia_mm"), d.get("estado")])
     photo_cards = "".join(_photo_card(photo) for photo in fotos)
+    programmed_speed = _programmed_speed_value(summary)
     chart = svg_line_chart(
         advances,
         "minuto_transcurrido",
         "avance_acumulado_cm",
-        None,
-        x_label_key="fecha_hora",
-        x_axis_title="Fecha / hora",
+        programmed_speed,
+        x_axis_title="Horas transcurridas",
         y_axis_title="Avance acumulado (cm)",
         y_tick_step=100,
         legend=True,
         real_label="Colado actual",
         reference_lines=FIRST_CAST_REFERENCE_LINES,
+        expected_label=_programmed_chart_label(programmed_speed),
+        x_tick_mode="hours",
     )
     window = mold_state.get("ventana_molde") or {}
     explanation = mold_state.get("explicacion_operativa") or {}
@@ -405,7 +407,7 @@ def render_control_report(context: dict[str, Any]) -> str:
         <table><thead><tr><th>Fecha</th><th>Punto</th><th>Dir.</th><th>mm</th><th>Tol.</th><th>Estado</th></tr></thead><tbody>{desplome_rows}</tbody></table>
       </section>
       <section>
-        <h2>Avance Real Vs Primer Colado</h2>
+        <h2>Avance Real Vs Referencias</h2>
         {chart}
         <h2>Avance Por Turno</h2>
         <table><thead><tr><th>Turno</th><th>Inicio</th><th>Fin</th><th>Operador</th><th>Parcial m</th><th>Acum. m</th><th>cm/h</th><th>Obs.</th></tr></thead><tbody>{turno_rows}</tbody></table>
@@ -440,12 +442,23 @@ def _labsico_logo_markup() -> str:
 
 
 def _programmed_speed_label(summary: dict[str, Any]) -> str:
-    speed = summary.get("ritmo_programado_cm_h")
+    speed = _programmed_speed_value(summary)
     detail = summary.get("ritmo_programado_detalle")
     label = f"{speed} cm/h" if speed is not None else "-- cm/h"
     if detail:
         label = f"{label} ({detail})"
     return escape_html(label)
+
+
+def _programmed_speed_value(summary: dict[str, Any]) -> float | None:
+    try:
+        return float(summary.get("ritmo_programado_cm_h"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _programmed_chart_label(speed: float | None) -> str:
+    return f"Programado {speed:g} cm/h" if speed is not None else "Programado"
 
 
 def _operational_conclusion(context: dict[str, Any]) -> dict[str, Any]:
@@ -500,18 +513,20 @@ def _printable_control_summary(context: dict[str, Any] | None) -> str:
     mold_state = context.get("mold_state") or {}
     window = mold_state.get("ventana_molde") or {}
     programmed_speed_label = _programmed_speed_label(summary)
+    programmed_speed = _programmed_speed_value(summary)
     chart = svg_line_chart(
         advances,
         "minuto_transcurrido",
         "avance_acumulado_cm",
-        None,
-        x_label_key="fecha_hora",
-        x_axis_title="Fecha / hora",
+        programmed_speed,
+        x_axis_title="Horas transcurridas",
         y_axis_title="Avance acumulado (cm)",
         y_tick_step=100,
         legend=True,
         real_label="Colado actual",
         reference_lines=FIRST_CAST_REFERENCE_LINES,
+        expected_label=_programmed_chart_label(programmed_speed),
+        x_tick_mode="hours",
     )
     turno_rows = _rows(
         turnos,
@@ -548,7 +563,7 @@ def _printable_control_summary(context: dict[str, Any] | None) -> str:
     </div>
     <div class="control-layout">
       <section>
-        <h3>Avance Real Vs Primer Colado</h3>
+        <h3>Avance Real Vs Referencias</h3>
         {chart}
       </section>
       <section>
